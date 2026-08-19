@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useStore, selectFiltered } from '../store';
+import { useStore } from '../stores';
+import { filterRecords } from '../store/selectors';
 import type { RecordItem } from '../types';
 import { InlineNotes } from './MusicNotes';
 import { requestEditor } from '../editorBus';
@@ -40,11 +42,28 @@ function PlanChip({ record }: { record: RecordItem }) {
 }
 
 export function ScheduleView({ typeId, embedded }: { typeId: string; embedded?: boolean }) {
-  const state = useStore();
-  const { types } = state;
+  const { records, types, workspaceFilter, search, statusFilter } = useStore(
+    useShallow((state) => ({
+      records: state.records,
+      types: state.types,
+      workspaceFilter: state.workspaceFilter,
+      search: state.search,
+      statusFilter: state.statusFilter,
+    })),
+  );
   const [weekOffset, setWeekOffset] = useState(0);
   const type = types.find((t) => t.id === typeId);
-  const all = useMemo(() => selectFiltered(state, typeId), [state, typeId]);
+  const all = useMemo(
+    () =>
+      filterRecords({
+        records,
+        typeId,
+        workspaceId: workspaceFilter,
+        status: statusFilter,
+        query: search,
+      }),
+    [records, search, statusFilter, typeId, workspaceFilter],
+  );
 
   // 以周一为一周起点
   const days = useMemo(() => {

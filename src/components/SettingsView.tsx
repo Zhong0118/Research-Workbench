@@ -1,11 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
-import { Download, Upload, RotateCcw, Trash2, Plus, Power } from 'lucide-react';
-import { useStore } from '../store';
+import { useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { Download, Upload, RotateCcw, Trash2, Plus, Power, Moon } from 'lucide-react';
+import { useStore } from '../stores';
 import { InlineNotes } from './MusicNotes';
-import { rw } from '../platform';
+import { desktopPlatform } from '../platform';
+import type { ExportFormat } from '../features/export/exportService';
+import { NotificationSettings } from '../features/notifications/NotificationSettings';
 
 function TypeManager() {
-  const { types, records, addType, renameType, deleteType } = useStore();
+  const { types, records, addType, renameType, deleteType } = useStore(
+    useShallow((state) => ({
+      types: state.types,
+      records: state.records,
+      addType: state.addType,
+      renameType: state.renameType,
+      deleteType: state.deleteType,
+    })),
+  );
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'generic' | 'todo'>('generic');
 
@@ -35,6 +46,8 @@ function TypeManager() {
                     ? '方向'
                     : t.kind === 'project'
                       ? '项目'
+                    : t.id === 'literature'
+                        ? '文献'
                       : '通用'}
             </span>
             <span className="field-chip">{count} 条</span>
@@ -83,7 +96,15 @@ function TypeManager() {
 }
 
 function WorkspaceManager() {
-  const { workspaces, records, addWorkspace, renameWorkspace, deleteWorkspace } = useStore();
+  const { workspaces, records, addWorkspace, renameWorkspace, deleteWorkspace } = useStore(
+    useShallow((state) => ({
+      workspaces: state.workspaces,
+      records: state.records,
+      addWorkspace: state.addWorkspace,
+      renameWorkspace: state.renameWorkspace,
+      deleteWorkspace: state.deleteWorkspace,
+    })),
+  );
   const [name, setName] = useState('');
 
   return (
@@ -135,21 +156,28 @@ function WorkspaceManager() {
 }
 
 function DataManager() {
-  const { exportData, importData, resetSample } = useStore();
+  const { records, types, workspaces, settings, importData, resetSample } = useStore(
+    useShallow((state) => ({
+      records: state.records,
+      types: state.types,
+      workspaces: state.workspaces,
+      settings: state.settings,
+      importData: state.importData,
+      resetSample: state.resetSample,
+    })),
+  );
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
 
-  const onExport = () => {
-    const payload = exportData();
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const date = new Date().toISOString().slice(0, 10);
-    a.href = url;
-    a.download = `research-workbench-backup-${date}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setMessage('已导出 JSON 备份。');
+  const onExport = async (format: ExportFormat) => {
+    if (!settings) return;
+    try {
+      const { exportSnapshot } = await import('../features/export/exportService');
+      const result = await exportSnapshot(format, { records, types, workspaces, settings }, desktopPlatform);
+      if (result.status === 'saved') setMessage(`已保存：${result.filename}`);
+    } catch (error) {
+      setMessage(`导出失败：${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   const onImport = async (file: File) => {
@@ -159,7 +187,7 @@ function DataManager() {
     }
     try {
       const text = await file.text();
-      const result = importData(JSON.parse(text));
+      const result = await importData(JSON.parse(text));
       setMessage(result.ok ? '导入成功，数据已恢复。' : `导入失败：${result.error}`);
     } catch {
       setMessage('导入失败：文件不是有效的 JSON。');
@@ -169,11 +197,23 @@ function DataManager() {
   return (
     <div className="card settings-section">
       <h3>数据管理</h3>
-      <p className="desc">全部数据保存在本机浏览器存储中，无需账号与网络。换机或重装前请先导出备份。</p>
+      <p className="desc">全部数据保存在本机 SQLite 数据库中，无需账号与网络。JSON 可用于完整备份，其余格式便于长期阅读和迁移。</p>
       <div className="data-actions">
-        <button className="btn btn-ghost" onClick={onExport}>
+        <button className="btn btn-ghost" onClick={() => void onExport('json')}>
           <Download size={15} />
-          导出 JSON 备份
+          JSON 备份
+        </button>
+        <button className="btn btn-ghost" onClick={() => void onExport('markdown')}>
+          <Download size={15} />
+          Markdown
+        </button>
+        <button className="btn btn-ghost" onClick={() => void onExport('csv')}>
+          <Download size={15} />
+          CSV
+        </button>
+        <button className="btn btn-ghost" onClick={() => void onExport('html')}>
+          <Download size={15} />
+          HTML
         </button>
         <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>
           <Upload size={15} />
@@ -206,7 +246,12 @@ function DataManager() {
 }
 
 function ProfileManager() {
-  const { displayName, setDisplayName } = useStore();
+  const { displayName, setDisplayName } = useStore(
+    useShallow((state) => ({
+      displayName: state.displayName,
+      setDisplayName: state.setDisplayName,
+    })),
+  );
 
   return (
     <div className="card settings-section">
@@ -223,34 +268,75 @@ function ProfileManager() {
   );
 }
 
-function LaunchManager() {
-  const supported = typeof rw?.getAutoLaunch === 'function';
-  const [on, setOn] = useState(false);
-  const [tray, setTray] = useState(true);
+function AppearanceManager() {
+  const { settings, updateSettings } = useStore(
+    useShallow((state) => ({
+      settings: state.settings,
+      updateSettings: state.updateSettings,
+    })),
+  );
+  if (!settings) return null;
 
-  useEffect(() => {
-    rw?.getAutoLaunch?.().then(setOn).catch(() => undefined);
-    rw?.getCloseToTray?.().then(setTray).catch(() => undefined);
-  }, []);
+  return (
+    <div className="card settings-section">
+      <h3>
+        <Moon size={15} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+        外观与动效
+      </h3>
+      <p className="desc">月夜模式采用低对比墨黑背景；减少动效会停止持续漂浮的音符和非必要过渡。</p>
+      <div className="form-row">
+        <div>
+          <label className="form-label" htmlFor="theme-mode">主题</label>
+          <select
+            id="theme-mode"
+            className="form-select"
+            value={settings.theme}
+            onChange={(event) => void updateSettings({ theme: event.target.value as typeof settings.theme })}
+          >
+            <option value="system">跟随系统</option>
+            <option value="light">纸墨浅色</option>
+            <option value="dark">月夜深色</option>
+          </select>
+        </div>
+        <div>
+          <label className="form-label" htmlFor="motion-mode">动效</label>
+          <select
+            id="motion-mode"
+            className="form-select"
+            value={settings.motion}
+            onChange={(event) => void updateSettings({ motion: event.target.value as typeof settings.motion })}
+          >
+            <option value="system">跟随系统</option>
+            <option value="full">完整动效</option>
+            <option value="reduce">减少动效</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LaunchManager() {
+  const supported = desktopPlatform.isDesktop;
+  const { settings, updateSettings } = useStore(
+    useShallow((state) => ({
+      settings: state.settings,
+      updateSettings: state.updateSettings,
+    })),
+  );
 
   const toggle = async (enabled: boolean) => {
-    setOn(enabled);
     if (!supported) return;
     try {
-      setOn(await rw!.setAutoLaunch!(enabled));
-    } catch {
-      setOn(!enabled);
-    }
+      await updateSettings({ autoLaunch: await desktopPlatform.setAutoLaunch(enabled) });
+    } catch { /* 状态层保留上次已持久化的值 */ }
   };
 
   const toggleTray = async (enabled: boolean) => {
-    setTray(enabled);
     if (!supported) return;
     try {
-      setTray(await rw!.setCloseToTray!(enabled));
-    } catch {
-      setTray(!enabled);
-    }
+      await updateSettings({ closeToTray: await desktopPlatform.setCloseToTray(enabled) });
+    } catch { /* 状态层保留上次已持久化的值 */ }
   };
 
   return (
@@ -263,7 +349,7 @@ function LaunchManager() {
       <label className="checkline">
         <input
           type="checkbox"
-          checked={on}
+          checked={settings?.autoLaunch ?? false}
           disabled={!supported}
           onChange={(e) => toggle(e.target.checked)}
         />
@@ -273,7 +359,7 @@ function LaunchManager() {
       <label className="checkline">
         <input
           type="checkbox"
-          checked={tray}
+          checked={settings?.closeToTray ?? false}
           disabled={!supported}
           onChange={(e) => toggleTray(e.target.checked)}
         />
@@ -294,6 +380,8 @@ export function SettingsView() {
       <div className="settings-grid">
         <TypeManager />
         <WorkspaceManager />
+        <AppearanceManager />
+        <NotificationSettings />
         <DataManager />
         <LaunchManager />
         <ProfileManager />

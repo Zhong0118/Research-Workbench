@@ -10,6 +10,7 @@ import {
   History,
   Calendar,
   Tag,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -25,6 +26,7 @@ const ICONS: Record<string, LucideIcon> = {
   history: History,
   calendar: Calendar,
   tag: Tag,
+  'book-open': BookOpen,
 };
 
 export function typeIcon(icon: string): LucideIcon {

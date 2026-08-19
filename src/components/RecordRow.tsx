@@ -1,11 +1,15 @@
 import { Star, Pencil, Copy, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import type { DragEvent } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { RecordItem } from '../types';
 import { STATUS_LABEL, SUB_LABEL } from '../types';
-import { useStore } from '../store';
+import { useStore } from '../stores';
 import { requestEditor } from '../editorBus';
 import { formatDate } from '../utils';
+import { markdownSummary } from '../features/markdown/plainText';
+import { LiteratureMeta } from '../features/literature/LiteratureMeta';
+import { desktopPlatform } from '../platform';
 
 /** 拖拽排序的透传属性（类型页行列表用；不传则不可拖拽，行为与之前一致） */
 export interface RowDnd {
@@ -37,8 +41,24 @@ export function StarButton({ record }: { record: RecordItem }) {
   );
 }
 
-export function RecordRow({ record, dnd }: { record: RecordItem; dnd?: RowDnd }) {
-  const { types, workspaces, archiveRecord, duplicateRecord, deleteRecord } = useStore();
+export function RecordRow({
+  record,
+  dnd,
+  selection,
+}: {
+  record: RecordItem;
+  dnd?: RowDnd;
+  selection?: { checked: boolean; onToggle: () => void };
+}) {
+  const { types, workspaces, archiveRecord, duplicateRecord, deleteRecord } = useStore(
+    useShallow((state) => ({
+      types: state.types,
+      workspaces: state.workspaces,
+      archiveRecord: state.archiveRecord,
+      duplicateRecord: state.duplicateRecord,
+      deleteRecord: state.deleteRecord,
+    })),
+  );
   const type = types.find((t) => t.id === record.typeId);
   const ws = workspaces.find((w) => w.id === record.workspaceId);
 
@@ -59,6 +79,15 @@ export function RecordRow({ record, dnd }: { record: RecordItem; dnd?: RowDnd })
       onDrop={dnd?.onDrop}
       title={dnd ? '拖动可调整顺序' : undefined}
     >
+      {selection && (
+        <input
+          className="record-select"
+          type="checkbox"
+          aria-label={`选择「${record.title}」`}
+          checked={selection.checked}
+          onChange={selection.onToggle}
+        />
+      )}
       <StarButton record={record} />
       <div className="record-main">
         <div
@@ -69,7 +98,13 @@ export function RecordRow({ record, dnd }: { record: RecordItem; dnd?: RowDnd })
         >
           {record.title}
         </div>
-        {record.content && <div className="record-snippet">{record.content.split('\n')[0]}</div>}
+        {record.literature && (
+          <LiteratureMeta
+            details={record.literature}
+            onOpenExternal={(url) => desktopPlatform.openExternal(url)}
+          />
+        )}
+        {record.content && <div className="record-snippet">{markdownSummary(record.content)}</div>}
         <div className="record-meta">
           {record.archived ? <span className="pill pill-archived">已归档</span> : <StatusPill status={record.status} />}
           {type && (

@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
-import { useStore, selectFiltered } from '../store';
+import { useShallow } from 'zustand/react/shallow';
+import { useStore } from '../stores';
+import { filterRecords } from '../store/selectors';
 import { RecordRow } from './RecordRow';
 import { InlineNotes } from './MusicNotes';
 import { MoonHero } from './MoonHero';
@@ -7,10 +9,27 @@ import { ScheduleView } from './ScheduleView';
 import { greeting, todayStr, daysFromToday } from '../utils';
 
 export function Dashboard() {
-  const state = useStore();
-  const { types, statusFilter, displayName } = state;
+  const { records, types, workspaceFilter, search, statusFilter, displayName } = useStore(
+    useShallow((state) => ({
+      records: state.records,
+      types: state.types,
+      workspaceFilter: state.workspaceFilter,
+      search: state.search,
+      statusFilter: state.statusFilter,
+      displayName: state.displayName,
+    })),
+  );
 
-  const filtered = useMemo(() => selectFiltered(state), [state]);
+  const filtered = useMemo(
+    () =>
+      filterRecords({
+        records,
+        workspaceId: workspaceFilter,
+        status: statusFilter,
+        query: search,
+      }),
+    [records, search, statusFilter, workspaceFilter],
+  );
   const todoType = types.find((t) => t.kind === 'todo');
   const dueToday = todoType
     ? filtered.filter(

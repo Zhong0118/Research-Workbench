@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
-import { useStore, countForType } from '../store';
+import { useShallow } from 'zustand/react/shallow';
+import { useStore } from '../stores';
+import { countRecordsByType } from '../store/selectors';
 import { FloatingNotes } from './MusicNotes';
 
 const PALETTE = [
@@ -19,15 +21,23 @@ const DAY = 86400000;
 
 /** 「月之暗面」主题图表：月相环形图（类型分布）+ 声浪曲线（近 14 天活跃） */
 export function MoonHero() {
-  const { records, types } = useStore();
-
-  const counts = useMemo(
-    () =>
-      types
-        .map((t) => ({ t, n: countForType(records, t) }))
-        .filter((x) => x.n > 0),
-    [records, types],
+  const { records, types, setView, setStatusFilter } = useStore(
+    useShallow((state) => ({
+      records: state.records,
+      types: state.types,
+      setView: state.setView,
+      setStatusFilter: state.setStatusFilter,
+    })),
   );
+  const navigateToType = (typeId: string) => {
+    setStatusFilter('all');
+    setView(typeId);
+  };
+
+  const counts = useMemo(() => {
+    const countsByType = countRecordsByType(records, types);
+    return types.map((t) => ({ t, n: countsByType[t.id] })).filter((x) => x.n > 0);
+  }, [records, types]);
   const total = counts.reduce((s, x) => s + x.n, 0);
 
   const days = useMemo(() => {
@@ -79,6 +89,14 @@ export function MoonHero() {
             {segs.map((s) => (
               <circle
                 key={s.key}
+                className="donut-segment"
+                role="button"
+                tabIndex={0}
+                aria-label={`查看${s.name}，${s.n} 条记录`}
+                onClick={() => navigateToType(s.key)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') navigateToType(s.key);
+                }}
                 cx="66"
                 cy="66"
                 r={R}
@@ -100,11 +118,16 @@ export function MoonHero() {
           </svg>
           <div className="hero-legend">
             {segs.map((s) => (
-              <div key={s.key} className="legend-row">
+              <button
+                key={s.key}
+                className="legend-row"
+                aria-label={`${s.name}，${s.n} 条记录`}
+                onClick={() => navigateToType(s.key)}
+              >
                 <span className="legend-dot" style={{ background: s.color }} />
                 {s.name}
                 <span className="legend-n">{s.n}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>

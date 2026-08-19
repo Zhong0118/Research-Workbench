@@ -1,8 +1,10 @@
-import { useMemo, useState, Fragment } from 'react';
+import { useMemo, useState, Fragment, lazy, Suspense } from 'react';
 import type { DragEvent } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import clsx from 'clsx';
-import { Plus, GripVertical, Pencil, Copy, Archive, Trash2, Star } from 'lucide-react';
-import { useStore, selectFiltered } from '../store';
+import { Plus, GripVertical, Pencil, Copy, Archive, Trash2, Star, ListChecks } from 'lucide-react';
+import { useStore } from '../stores';
+import { filterRecords } from '../store/selectors';
 import { STATUS_LABEL } from '../types';
 import type { RecordItem } from '../types';
 import { RecordRow, StatusPill } from './RecordRow';
@@ -12,6 +14,15 @@ import { InlineNotes } from './MusicNotes';
 import { requestEditor } from '../editorBus';
 import { orderKey } from '../planUtils';
 import { formatDate } from '../utils';
+import { MarkdownPreview } from '../features/markdown/MarkdownPreview';
+import { desktopPlatform } from '../platform';
+import { ProjectNextActions } from '../features/projects/ProjectNextActions';
+import { useRecordSelection } from '../features/selection/useRecordSelection';
+import { BulkActionBar } from '../features/selection/BulkActionBar';
+
+const ProjectBoard = lazy(() =>
+  import('../features/projects/ProjectBoard').then((module) => ({ default: module.ProjectBoard })),
+);
 
 const STATUS_FILTERS: Array<{ key: string; label: string }> = [
   { key: 'all', label: '全部' },
@@ -23,8 +34,16 @@ const STATUS_FILTERS: Array<{ key: string; label: string }> = [
 ];
 
 /** 科研方向专用宽卡片：主次优先级 + 多行正文 + 竖排自定义字段 */
-function DirectionCard({ record, dnd }: { record: RecordItem; dnd: RowDnd }) {
-  const { workspaces, archiveRecord, duplicateRecord, deleteRecord, updateRecord } = useStore();
+function DirectionCard({ record, dnd, selection }: { record: RecordItem; dnd?: RowDnd; selection?: { checked: boolean; onToggle: () => void } }) {
+  const { workspaces, archiveRecord, duplicateRecord, deleteRecord, updateRecord } = useStore(
+    useShallow((state) => ({
+      workspaces: state.workspaces,
+      archiveRecord: state.archiveRecord,
+      duplicateRecord: state.duplicateRecord,
+      deleteRecord: state.deleteRecord,
+      updateRecord: state.updateRecord,
+    })),
+  );
   const ws = workspaces.find((w) => w.id === record.workspaceId);
   const isMain = record.priority === 'high';
 
@@ -36,15 +55,16 @@ function DirectionCard({ record, dnd }: { record: RecordItem; dnd: RowDnd }) {
 
   return (
     <div
-      className={clsx('card record-card', dnd.className)}
-      draggable
-      onDragStart={dnd.onDragStart}
-      onDragEnd={dnd.onDragEnd}
-      onDragOver={dnd.onDragOver}
-      onDragLeave={dnd.onDragLeave}
-      onDrop={dnd.onDrop}
+      className={clsx('card record-card', dnd?.className)}
+      draggable={!!dnd}
+      onDragStart={dnd?.onDragStart}
+      onDragEnd={dnd?.onDragEnd}
+      onDragOver={dnd?.onDragOver}
+      onDragLeave={dnd?.onDragLeave}
+      onDrop={dnd?.onDrop}
     >
       <div className="rc-head">
+        {selection && <input className="record-select" type="checkbox" aria-label={`选择「${record.title}」`} checked={selection.checked} onChange={selection.onToggle} />}
         <GripVertical size={14} className="grip rc-grip" />
         <button
           className={clsx('star-btn', isMain && 'on')}
@@ -80,7 +100,13 @@ function DirectionCard({ record, dnd }: { record: RecordItem; dnd: RowDnd }) {
           </button>
         </div>
       </div>
-      {record.content && <div className="rc-content">{record.content}</div>}
+      {record.content && (
+        <MarkdownPreview
+          source={record.content}
+          className="rc-content direction-markdown"
+          onOpenExternal={(url) => desktopPlatform.openExternal(url)}
+        />
+      )}
       {record.fields.length > 0 && (
         <div className="rc-fields">
           {record.fields.map((f) => (
@@ -105,11 +131,61 @@ function DirectionCard({ record, dnd }: { record: RecordItem; dnd: RowDnd }) {
 }
 
 export function RecordsView({ typeId }: { typeId: string }) {
-  const state = useStore();
-  const { types, statusFilter, setStatusFilter, reorderRecord } = state;
+  const {
+    records: allRecords,
+    types,
+    workspaceFilter,
+    search,
+    statusFilter,
+    setStatusFilter,
+    reorderRecord,
+    settings,
+    updateSettings,
+    updateRecord,
+    workspaces,
+    updateRecords,
+    deleteRecords,
+  } = useStore(
+    useShallow((state) => ({
+      records: state.records,
+      types: state.types,
+      workspaceFilter: state.workspaceFilter,
+      search: state.search,
+      statusFilter: state.statusFilter,
+      setStatusFilter: state.setStatusFilter,
+      reorderRecord: state.reorderRecord,
+      settings: state.settings,
+      updateSettings: state.updateSettings,
+      updateRecord: state.updateRecord,
+      workspaces: state.workspaces,
+      updateRecords: state.updateRecords,
+      deleteRecords: state.deleteRecords,
+    })),
+  );
   const type = types.find((t) => t.id === typeId);
 
-  const records = useMemo(() => selectFiltered(state, typeId), [state, typeId]);
+  const records = useMemo(
+    () =>
+      filterRecords({
+        records: allRecords,
+        typeId,
+        workspaceId: workspaceFilter,
+        status: statusFilter,
+        query: search,
+      }),
+    [allRecords, search, statusFilter, typeId, workspaceFilter],
+  );
+  const boardProjects = useMemo(
+    () =>
+      filterRecords({
+        records: allRecords,
+        typeId,
+        workspaceId: workspaceFilter,
+        status: 'all',
+        query: search,
+      }),
+    [allRecords, search, typeId, workspaceFilter],
+  );
 
   // 手动排序（order）优先，未设置时按更新时间倒序兜底；科研方向：主要方向在前
   const sorted = useMemo(() => {
@@ -124,6 +200,10 @@ export function RecordsView({ typeId }: { typeId: string }) {
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<{ id: string; after: boolean } | null>(null);
+  const selection = useRecordSelection(sorted.map((record) => record.id));
+  const selectionFor = (record: RecordItem) => selection.selecting
+    ? { checked: selection.selected.has(record.id), onToggle: () => selection.toggle(record.id) }
+    : undefined;
 
   // 科研项目：按纵向 / 横向细分分组（组内保持手动排序）
   const subGroups = useMemo(() => {
@@ -142,6 +222,7 @@ export function RecordsView({ typeId }: { typeId: string }) {
 
   const isDirection = type.kind === 'direction';
   const isProject = type.kind === 'project';
+  const todoTypeId = types.find((candidate) => candidate.kind === 'todo')?.id ?? 'todo';
 
   const endDrag = () => {
     setDragId(null);
@@ -193,6 +274,11 @@ export function RecordsView({ typeId }: { typeId: string }) {
           <Plus size={15} />
           新建{type.name}
         </button>
+        {!selection.selecting && !(isProject && settings?.projectViewMode === 'board') && (
+          <button className="btn btn-ghost" onClick={selection.enter}>
+            <ListChecks size={15} />批量选择
+          </button>
+        )}
       </div>
 
       <div className="filter-bar">
@@ -205,14 +291,38 @@ export function RecordsView({ typeId }: { typeId: string }) {
             {f.label}
           </button>
         ))}
+        {isProject && (
+          <div className="view-mode-toggle" aria-label="项目视图">
+            <button
+              aria-pressed={(settings?.projectViewMode ?? 'list') === 'list'}
+              onClick={() => void updateSettings({ projectViewMode: 'list' })}
+            >列表</button>
+            <button
+              aria-pressed={settings?.projectViewMode === 'board'}
+              onClick={() => {
+                setStatusFilter('all');
+                void updateSettings({ projectViewMode: 'board' });
+              }}
+            >看板</button>
+          </div>
+        )}
       </div>
 
-      {sorted.length === 0 ? (
+      {isProject && settings?.projectViewMode === 'board' ? (
+        <Suspense fallback={<div className="board-loading">正在展开项目看板…</div>}>
+          <ProjectBoard
+            projects={boardProjects}
+            allRecords={allRecords}
+            todoTypeId={todoTypeId}
+            onMove={(id, status) => void updateRecord(id, { status })}
+          />
+        </Suspense>
+      ) : sorted.length === 0 ? (
         <Empty text={`暂无${statusFilter === 'all' ? '' : '该状态下的'}${type.name}记录`} />
       ) : isDirection ? (
         <div className="record-grid">
           {sorted.map((r) => (
-            <DirectionCard key={r.id} record={r} dnd={dndFor(r)} />
+            <DirectionCard key={r.id} record={r} dnd={selection.selecting ? undefined : dndFor(r)} selection={selectionFor(r)} />
           ))}
         </div>
       ) : isProject ? (
@@ -222,7 +332,10 @@ export function RecordsView({ typeId }: { typeId: string }) {
               <h2 className="section-title proj-group">{g.label}</h2>
               <div className="record-list">
                 {g.items.map((r) => (
-                  <RecordRow key={r.id} record={r} dnd={dndFor(r)} />
+                  <div className="project-record-wrap" key={r.id}>
+                    <RecordRow record={r} dnd={selection.selecting ? undefined : dndFor(r)} selection={selectionFor(r)} />
+                    <ProjectNextActions records={allRecords} projectId={r.id} todoTypeId={todoTypeId} />
+                  </div>
                 ))}
               </div>
             </Fragment>
@@ -231,9 +344,33 @@ export function RecordsView({ typeId }: { typeId: string }) {
       ) : (
         <div className="record-list">
           {sorted.map((r) => (
-            <RecordRow key={r.id} record={r} dnd={dndFor(r)} />
+            <RecordRow key={r.id} record={r} dnd={selection.selecting ? undefined : dndFor(r)} selection={selectionFor(r)} />
           ))}
         </div>
+      )}
+      {selection.selecting && (
+        <>
+          <button className="select-visible-btn" onClick={selection.selectVisible}>选择当前结果（{sorted.length}）</button>
+          <BulkActionBar
+            count={selection.selected.size}
+            workspaces={workspaces}
+            onArchive={async () => {
+              await updateRecords([...selection.selected], { archived: true });
+              selection.clear();
+            }}
+            onMove={async (workspaceId) => {
+              await updateRecords([...selection.selected], { workspaceId });
+              selection.clear();
+            }}
+            onDelete={async () => {
+              const count = selection.selected.size;
+              if (!window.confirm(`确定删除已选择的 ${count} 条记录吗？此操作不可恢复。`)) return;
+              await deleteRecords([...selection.selected]);
+              selection.clear();
+            }}
+            onCancel={selection.clear}
+          />
+        </>
       )}
     </div>
   );

@@ -1,14 +1,49 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Plus, Star, Trash2 } from 'lucide-react';
-import { useStore, uid } from '../store';
+import { useStore, uid } from '../stores';
 import { Modal } from './Modal';
-import type { CustomField, Priority, Status } from '../types';
+import type { CustomField, LiteratureDetails, Priority, RecurrenceRule, Status } from '../types';
 import { PRIORITY_LABEL, STATUS_LABEL } from '../types';
 import type { EditorRequest } from '../editorBus';
 import { todayStr } from '../utils';
+import { MarkdownEditor } from '../features/markdown/MarkdownEditor';
+import { desktopPlatform } from '../platform';
+import { useRecordDraft } from '../features/drafts/useRecordDraft';
+import { workbenchRepository } from '../repositories';
+import { RecurrenceFields } from '../features/todos/RecurrenceFields';
+import { LiteratureFields } from '../features/literature/LiteratureFields';
+
+interface EditorDraftData {
+  title: string;
+  typeId: string;
+  workspaceId: string;
+  status: Status;
+  starred: boolean;
+  content: string;
+  fields: CustomField[];
+  priority: Priority;
+  dueDate: string;
+  planDate: string;
+  planStart: string;
+  planEnd: string;
+  sub: 'vertical' | 'horizontal';
+  recurrence: RecurrenceRule | null;
+  projectId: string;
+  literature: LiteratureDetails;
+}
 
 export function EditorModal({ request, onClose }: { request: EditorRequest; onClose: () => void }) {
-  const { records, types, workspaces, addRecord, updateRecord, deleteRecord } = useStore();
+  const { records, types, workspaces, addRecord, updateRecord, deleteRecord } = useStore(
+    useShallow((state) => ({
+      records: state.records,
+      types: state.types,
+      workspaces: state.workspaces,
+      addRecord: state.addRecord,
+      updateRecord: state.updateRecord,
+      deleteRecord: state.deleteRecord,
+    })),
+  );
   const existing = request.recordId ? records.find((r) => r.id === request.recordId) : undefined;
 
   const [title, setTitle] = useState(existing?.title ?? '');
@@ -24,8 +59,70 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
   const [planStart, setPlanStart] = useState(existing?.planStart ?? '');
   const [planEnd, setPlanEnd] = useState(existing?.planEnd ?? '');
   const [sub, setSub] = useState<'vertical' | 'horizontal'>(existing?.sub ?? 'vertical');
+  const [recurrence, setRecurrence] = useState<RecurrenceRule | null>(existing?.recurrence ?? null);
+  const [projectId, setProjectId] = useState(existing?.projectId ?? request.projectId ?? '');
+  const [literature, setLiterature] = useState<LiteratureDetails>(existing?.literature ?? {
+    authors: '', year: null, doi: '', url: '', readingStatus: 'unread',
+  });
+  const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
 
-  const kind = types.find((t) => t.id === typeId)?.kind ?? 'generic';
+  const initialPayload = useRef(
+    JSON.stringify({
+      title: existing?.title ?? '',
+      typeId: existing?.typeId ?? request.typeId ?? types[0]?.id ?? '',
+      workspaceId: existing?.workspaceId ?? workspaces[0]?.id ?? '',
+      status: existing?.status ?? 'active',
+      starred: existing?.starred ?? false,
+      content: existing?.content ?? '',
+      fields: existing?.fields ?? [],
+      priority: existing?.priority ?? 'none',
+      dueDate: existing?.dueDate ?? '',
+      planDate: existing?.planDate ?? request.planDate ?? todayStr(),
+      planStart: existing?.planStart ?? '',
+      planEnd: existing?.planEnd ?? '',
+      sub: existing?.sub ?? 'vertical',
+      recurrence: existing?.recurrence ?? null,
+      projectId: existing?.projectId ?? request.projectId ?? '',
+      literature: existing?.literature ?? { authors: '', year: null, doi: '', url: '', readingStatus: 'unread' },
+    } satisfies EditorDraftData),
+  ).current;
+  const draftId = useRef(existing ? `record:${existing.id}` : `new:${uid()}`).current;
+  const payload = useMemo(
+    () =>
+      JSON.stringify({
+        title,
+        typeId,
+        workspaceId,
+        status,
+        starred,
+        content,
+        fields,
+        priority,
+        dueDate,
+        planDate,
+        planStart,
+        planEnd,
+        sub,
+        recurrence,
+        projectId,
+        literature,
+      } satisfies EditorDraftData),
+    [content, dueDate, fields, literature, planDate, planEnd, planStart, priority, projectId, recurrence, starred, status, sub, title, typeId, workspaceId],
+  );
+  const draft = useRecordDraft({
+    draftId,
+    recordId: existing?.id ?? null,
+    initialPayload,
+    payload,
+    repository: workbenchRepository,
+  });
+
+  const selectedType = types.find((type) => type.id === typeId);
+  const kind = selectedType?.id === 'literature' ? 'literature' : (selectedType?.kind ?? 'generic');
+  const projectTypeIds = new Set(types.filter((type) => type.kind === 'project').map((type) => type.id));
+  const availableProjects = records.filter(
+    (record) => projectTypeIds.has(record.typeId) && !record.archived && record.workspaceId === workspaceId,
+  );
 
   // 弹窗打开后显式聚焦标题输入框（无边框窗口下 autoFocus 偶发失效）
   const titleRef = useRef<HTMLInputElement>(null);
@@ -37,7 +134,48 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
   const setField = (id: string, patch: Partial<CustomField>) =>
     setFields((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f)));
 
-  const save = () => {
+  const restoreDraft = () => {
+    if (!draft.recoveredPayload) return;
+    try {
+      const restored = JSON.parse(draft.recoveredPayload) as EditorDraftData;
+      setTitle(restored.title);
+      setTypeId(restored.typeId);
+      setWorkspaceId(restored.workspaceId);
+      setStatus(restored.status);
+      setStarred(restored.starred);
+      setContent(restored.content);
+      setFields(restored.fields);
+      setPriority(restored.priority);
+      setDueDate(restored.dueDate);
+      setPlanDate(restored.planDate);
+      setPlanStart(restored.planStart);
+      setPlanEnd(restored.planEnd);
+      setSub(restored.sub);
+      setRecurrence(restored.recurrence ?? null);
+      setProjectId(restored.projectId ?? '');
+      setLiterature(restored.literature ?? { authors: '', year: null, doi: '', url: '', readingStatus: 'unread' });
+      draft.clearRecovered();
+    } catch {
+      void draft.discard();
+    }
+  };
+
+  const requestClose = () => {
+    if (payload === initialPayload) return true;
+    setShowDiscardPrompt(true);
+    return false;
+  };
+
+  const cancel = () => {
+    if (requestClose()) onClose();
+  };
+
+  const discardAndClose = async () => {
+    await draft.discard();
+    onClose();
+  };
+
+  const save = async () => {
     const trimmed = title.trim();
     if (!trimmed) return;
     const cleanFields = fields
@@ -57,19 +195,24 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
       planStart: kind === 'schedule' ? planStart || null : null,
       planEnd: kind === 'schedule' ? planEnd || null : null,
       sub: kind === 'project' ? sub : null,
+      recurrence: kind === 'todo' ? recurrence : null,
+      projectId: kind === 'todo' ? projectId || null : null,
+      literature: kind === 'literature' ? literature : null,
     };
     if (existing) {
-      updateRecord(existing.id, patch);
+      await updateRecord(existing.id, patch);
     } else {
-      addRecord(patch);
+      await addRecord(patch);
     }
+    await draft.discard();
     onClose();
   };
 
-  const onDelete = () => {
+  const onDelete = async () => {
     if (!existing) return;
     if (window.confirm(`确定删除「${existing.title}」吗？此操作不可恢复。`)) {
-      deleteRecord(existing.id);
+      await deleteRecord(existing.id);
+      await draft.discard();
       onClose();
     }
   };
@@ -78,27 +221,54 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
     <Modal
       title={existing ? '编辑记录' : '新建记录'}
       onClose={onClose}
+      onRequestClose={requestClose}
       footer={
         <>
           {existing && (
             <button
               className="btn btn-ghost btn-danger"
               style={{ marginRight: 'auto' }}
-              onClick={onDelete}
+              onClick={() => void onDelete()}
             >
               <Trash2 size={14} />
               删除
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onClose}>
+          <button className="btn btn-ghost" onClick={cancel}>
             取消
           </button>
-          <button className="btn btn-primary" onClick={save} disabled={!title.trim()}>
+          <button className="btn btn-primary" onClick={() => void save()} disabled={!title.trim()}>
             {existing ? '保存修改' : '创建记录'}
           </button>
         </>
       }
     >
+      {draft.recoveredPayload && (
+        <div className="draft-notice" role="status">
+          <span>发现一份未保存的草稿，要恢复吗？</span>
+          <div>
+            <button className="btn btn-ghost btn-sm" onClick={() => void draft.discard()}>
+              忽略
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={restoreDraft}>
+              恢复草稿
+            </button>
+          </div>
+        </div>
+      )}
+      {showDiscardPrompt && (
+        <div className="draft-notice draft-notice-warning" role="alert">
+          <span>当前修改尚未保存，确定放弃吗？</span>
+          <div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowDiscardPrompt(false)}>
+              继续编辑
+            </button>
+            <button className="btn btn-danger btn-sm" onClick={() => void discardAndClose()}>
+              放弃修改
+            </button>
+          </div>
+        </div>
+      )}
       <div>
         <label className="form-label">标题</label>
         <input
@@ -126,7 +296,13 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
           <select
             className="form-select"
             value={workspaceId}
-            onChange={(e) => setWorkspaceId(e.target.value)}
+            onChange={(e) => {
+              const nextWorkspaceId = e.target.value;
+              setWorkspaceId(nextWorkspaceId);
+              if (projectId && !records.some((record) => record.id === projectId && record.workspaceId === nextWorkspaceId)) {
+                setProjectId('');
+              }
+            }}
           >
             {workspaces.map((w) => (
               <option key={w.id} value={w.id}>
@@ -246,13 +422,34 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
         )}
       </div>
 
+      {kind === 'todo' && (
+        <div className="todo-relations">
+          <RecurrenceFields value={recurrence} onChange={setRecurrence} />
+          <div>
+            <label className="form-label" htmlFor="todo-project">关联项目</label>
+            <select
+              id="todo-project"
+              className="form-select"
+              value={projectId}
+              onChange={(event) => setProjectId(event.target.value)}
+            >
+              <option value="">不关联项目</option>
+              {availableProjects.map((project) => (
+                <option key={project.id} value={project.id}>{project.title}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {kind === 'literature' && <LiteratureFields value={literature} onChange={setLiterature} />}
+
       <div>
         <label className="form-label">正文 / 心得笔记</label>
-        <textarea
-          className="form-textarea"
+        <MarkdownEditor
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="记录细节、心得、实验现象、灵感……"
+          onChange={setContent}
+          onOpenExternal={(url) => desktopPlatform.openExternal(url)}
         />
       </div>
 

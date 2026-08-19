@@ -1,9 +1,20 @@
 import { Search, Plus } from 'lucide-react';
-import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
+import { useStore } from '../stores';
 import { requestEditor } from '../editorBus';
 
 export function TopBar() {
-  const { search, setSearch, workspaces, workspaceFilter, setWorkspaceFilter, view, types } = useStore();
+  const { search, setSearch, workspaces, workspaceFilter, setWorkspaceFilter, view, types } = useStore(
+    useShallow((state) => ({
+      search: state.search,
+      setSearch: state.setSearch,
+      workspaces: state.workspaces,
+      workspaceFilter: state.workspaceFilter,
+      setWorkspaceFilter: state.setWorkspaceFilter,
+      view: state.view,
+      types: state.types,
+    })),
+  );
 
   const currentType = types.find((t) => t.id === view);
 

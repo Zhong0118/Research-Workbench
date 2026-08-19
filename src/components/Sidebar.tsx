@@ -1,17 +1,28 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { LayoutGrid, Settings, Plus, Archive } from 'lucide-react';
-import { useStore, countForType } from '../store';
+import { useStore } from '../stores';
+import { countRecordsByType } from '../store/selectors';
 import { typeIcon } from '../icons';
 import { FloatingNotes } from './MusicNotes';
 import { requestEditor } from '../editorBus';
 import clsx from 'clsx';
 
 export function Sidebar() {
-  const { types, records, view, setView, setStatusFilter, reorderType } = useStore();
+  const { types, records, view, setView, setStatusFilter, reorderType } = useStore(
+    useShallow((state) => ({
+      types: state.types,
+      records: state.records,
+      view: state.view,
+      setView: state.setView,
+      setStatusFilter: state.setStatusFilter,
+      reorderType: state.reorderType,
+    })),
+  );
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<{ id: string; after: boolean } | null>(null);
 
-  const countOf = (t: (typeof types)[number]) => countForType(records, t);
+  const counts = useMemo(() => countRecordsByType(records, types), [records, types]);
 
   const archivedCount = records.filter((r) => r.archived).length;
 
@@ -77,7 +88,7 @@ export function Sidebar() {
               <span className="nav-note" aria-hidden>
                 {t.note}
               </span>
-              <span className="count">{countOf(t)}</span>
+              <span className="count">{counts[t.id]}</span>
             </button>
           );
         })}

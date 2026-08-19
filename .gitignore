@@ -31,3 +31,5 @@ Thumbs.db
 .DS_Store
 .vscode/
 .idea/
+.pnpm-store/
+src-tauri/target/

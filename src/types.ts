@@ -1,65 +1,24 @@
-export type Status = 'planned' | 'active' | 'paused' | 'done';
-export type Priority = 'none' | 'low' | 'medium' | 'high';
+import type { Priority, Status } from './domain/models';
 
-export interface CustomField {
-  id: string;
-  name: string;
-  value: string;
-}
-
-export interface RecordItem {
-  id: string;
-  typeId: string;
-  workspaceId: string;
-  title: string;
-  content: string;
-  status: Status;
-  /** 今日重点 */
-  starred: boolean;
-  archived: boolean;
-  fields: CustomField[];
-  /** 待办专用 */
-  priority: Priority;
-  dueDate: string | null;
-  done: boolean;
-  /** 日程专用：计划在哪一天（YYYY-MM-DD）与可选起止时间（HH:mm） */
-  planDate: string | null;
-  planStart: string | null;
-  planEnd: string | null;
-  /** 科研项目专用：纵向 / 横向细分 */
-  sub?: 'vertical' | 'horizontal' | null;
-  createdAt: number;
-  updatedAt: number;
-  /** 手动排序权重（同类型内，越小越靠前；未设置时按更新时间倒序兜底） */
-  order?: number;
-}
-
-export type TypeKind = 'generic' | 'todo' | 'schedule' | 'direction' | 'project';
-
-export interface TypeDef {
-  id: string;
-  name: string;
-  kind: TypeKind;
-  icon: string;
-  /** 该类型对应的装饰音符 */
-  note: string;
-  builtin: boolean;
-}
-
-export interface Workspace {
-  id: string;
-  name: string;
-  builtin: boolean;
-}
-
-export interface ExportPayload {
-  app: 'research-workbench';
-  version: 1;
-  exportedAt: string;
-  records: RecordItem[];
-  types: TypeDef[];
-  workspaces: Workspace[];
-}
+export type {
+  AppSettings,
+  CustomField,
+  Draft,
+  ExportPayload,
+  LiteratureDetails,
+  MotionMode,
+  Priority,
+  ReadingStatus,
+  RecordItem,
+  RecurrenceFrequency,
+  RecurrenceRule,
+  Status,
+  ThemeMode,
+  TypeDef,
+  TypeKind,
+  WorkbenchSnapshot,
+  Workspace,
+} from './domain/models';
 
 /** 可供分配的音符组合（保证各类型互不相同） */
 export const NOTE_GLYPHS = [

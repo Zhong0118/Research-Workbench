@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useStore } from './store';
+import { useShallow } from 'zustand/react/shallow';
+import { useStore } from './stores';
 import { Sidebar } from './components/Sidebar';
 import { TitleBar } from './components/TitleBar';
 import { TopBar } from './components/TopBar';
@@ -10,10 +11,17 @@ import { ScheduleView } from './components/ScheduleView';
 import { SettingsView } from './components/SettingsView';
 import { EditorModal } from './components/EditorModal';
 import { EDITOR_EVENT, type EditorRequest } from './editorBus';
+import { AppStartup } from './components/AppStartup';
+import { useAppearance } from './features/theme/useAppearance';
+import { useNativeReminders } from './features/notifications/useNativeReminders';
 
-export default function App() {
-  const { view, types } = useStore();
+function WorkbenchApp() {
+  const { view, types, settings } = useStore(
+    useShallow((state) => ({ view: state.view, types: state.types, settings: state.settings })),
+  );
   const [editor, setEditor] = useState<EditorRequest | null>(null);
+  useAppearance(settings?.theme ?? 'system', settings?.motion ?? 'system');
+  useNativeReminders();
 
   useEffect(() => {
     const handler = (e: Event) => setEditor((e as CustomEvent<EditorRequest>).detail ?? {});
@@ -47,5 +55,13 @@ export default function App() {
       </div>
       {editor && <EditorModal request={editor} onClose={() => setEditor(null)} />}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AppStartup>
+      <WorkbenchApp />
+    </AppStartup>
   );
 }
