@@ -45,4 +45,23 @@ describe('Markdown', () => {
     expect(screen.getByRole('heading', { name: '实验记录' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
+
+  it('preserves single line breaks as <br> (remark-breaks)', () => {
+    const { container } = render(
+      <MarkdownPreview source={`第一行
+第二行`} onOpenExternal={vi.fn()} />,
+    );
+
+    expect(container.querySelector('br')).not.toBeNull();
+  });
+
+  it('offers a split mode that shows editor and preview side by side', () => {
+    render(
+      <MarkdownEditor value="# 同步预览" onChange={vi.fn()} onOpenExternal={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '分栏' }));
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '同步预览' })).toBeInTheDocument();
+  });
 });

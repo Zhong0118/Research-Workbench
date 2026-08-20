@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 
 interface MarkdownPreviewProps {
   source: string;
@@ -11,7 +12,7 @@ export function MarkdownPreview({ source, onOpenExternal, className = '' }: Mark
   return (
     <div className={`markdown-body ${className}`.trim()}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
           a: ({ href, children }) => (
             <a

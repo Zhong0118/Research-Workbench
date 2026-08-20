@@ -26,8 +26,13 @@ const initialSnapshot = (): WorkbenchSnapshot => ({
 class NodeSqliteExecutor implements SqlExecutor {
   readonly database = new DatabaseSync(':memory:');
   failWhenSqlIncludes: string | null = null;
+  forbidSelectInsideTransaction = false;
+  private insideTransaction = false;
 
   async select<T>(sql: string, params: unknown[] = []): Promise<T[]> {
+    if (this.forbidSelectInsideTransaction && this.insideTransaction) {
+      throw new Error('事务准备阶段不支持查询');
+    }
     return this.database.prepare(sql).all(...(params as SQLInputValue[])) as T[];
   }
 
@@ -41,6 +46,7 @@ class NodeSqliteExecutor implements SqlExecutor {
 
   async transaction<T>(work: (transaction: SqlExecutor) => Promise<T>): Promise<T> {
     this.database.exec('BEGIN IMMEDIATE');
+    this.insideTransaction = true;
     try {
       const result = await work(this);
       this.database.exec('COMMIT');
@@ -48,6 +54,8 @@ class NodeSqliteExecutor implements SqlExecutor {
     } catch (error) {
       this.database.exec('ROLLBACK');
       throw error;
+    } finally {
+      this.insideTransaction = false;
     }
   }
 }
@@ -147,6 +155,22 @@ describe('SqliteWorkbenchRepository', () => {
     const stored = await repository.loadSnapshot();
     expect(stored.records.find((record) => record.id === recurring.id)?.done).toBe(true);
     expect(stored.records.find((record) => record.id === result.next?.id)?.dueDate).toBe('2026-08-24');
+  });
+
+  it('completes a todo when the desktop transaction adapter forbids reads', async () => {
+    const executor = new NodeSqliteExecutor();
+    const repository = new SqliteWorkbenchRepository(executor, initialSnapshot);
+    await repository.initialize();
+    const todo = (await repository.loadSnapshot()).records.find(
+      (record) => record.typeId === 'todo' && !record.done,
+    )!;
+    executor.forbidSelectInsideTransaction = true;
+
+    const result = await repository.completeTodo(todo.id, Date.now());
+
+    expect(result.completed.done).toBe(true);
+    expect((await repository.loadSnapshot()).records.find((record) => record.id === todo.id)?.done)
+      .toBe(true);
   });
 
   it('rolls back recurring completion if creating the next occurrence fails', async () => {

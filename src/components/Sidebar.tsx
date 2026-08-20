@@ -23,6 +23,7 @@ export function Sidebar() {
   const [over, setOver] = useState<{ id: string; after: boolean } | null>(null);
 
   const counts = useMemo(() => countRecordsByType(records, types), [records, types]);
+  const scheduleType = types.find((type) => type.kind === 'schedule');
 
   const archivedCount = records.filter((r) => r.archived).length;
 
@@ -44,6 +45,21 @@ export function Sidebar() {
           <LayoutGrid size={16} />
           <span>工作台总览</span>
         </button>
+        {scheduleType && (() => {
+          const ScheduleIcon = typeIcon(scheduleType.icon);
+          return (
+            <button
+              className={clsx('nav-item', view === scheduleType.id && 'active')}
+              onClick={() => go(scheduleType.id)}
+              title="打开日程安排"
+            >
+              <ScheduleIcon size={16} />
+              <span>{scheduleType.name}</span>
+              <span className="nav-note" aria-hidden>{scheduleType.note}</span>
+              <span className="count">{counts[scheduleType.id]}</span>
+            </button>
+          );
+        })()}
 
         <div className="nav-section">内容类型</div>
         {types

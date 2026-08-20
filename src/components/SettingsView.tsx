@@ -4,6 +4,7 @@ import { Download, Upload, RotateCcw, Trash2, Plus, Power, Moon } from 'lucide-r
 import { useStore } from '../stores';
 import { InlineNotes } from './MusicNotes';
 import { desktopPlatform } from '../platform';
+import { confirmDialog } from '../confirmBus';
 import type { ExportFormat } from '../features/export/exportService';
 import { NotificationSettings } from '../features/notifications/NotificationSettings';
 
@@ -54,10 +55,15 @@ function TypeManager() {
             <button
               className="icon-btn danger"
               title="删除类型"
-              onClick={() =>
-                window.confirm(`删除类型「${t.name}」将同时删除其 ${count} 条记录，确定？`) &&
-                deleteType(t.id)
-              }
+              onClick={() => {
+                void confirmDialog({
+                  message: `删除类型「${t.name}」将同时删除其 ${count} 条记录，确定？`,
+                  confirmLabel: '删除',
+                  danger: true,
+                }).then((confirmed) => {
+                  if (confirmed) void deleteType(t.id);
+                });
+              }}
             >
               <Trash2 size={15} />
             </button>
@@ -126,7 +132,15 @@ function WorkspaceManager() {
             <button
               className="icon-btn danger"
               title="删除工作区"
-              onClick={() => window.confirm(`确定删除工作区「${w.name}」？`) && deleteWorkspace(w.id)}
+              onClick={() => {
+                void confirmDialog({
+                  message: `确定删除工作区「${w.name}」？`,
+                  confirmLabel: '删除',
+                  danger: true,
+                }).then((confirmed) => {
+                  if (confirmed) void deleteWorkspace(w.id);
+                });
+              }}
             >
               <Trash2 size={15} />
             </button>
@@ -221,9 +235,15 @@ function DataManager() {
         </button>
         <button
           className="btn btn-ghost btn-danger"
-          onClick={() =>
-            window.confirm('将清空当前全部数据并恢复示例数据，确定？') && resetSample()
-          }
+          onClick={() => {
+            void confirmDialog({
+              message: '将清空当前全部数据并恢复示例数据，确定？',
+              confirmLabel: '恢复',
+              danger: true,
+            }).then((confirmed) => {
+              if (confirmed) void resetSample();
+            });
+          }}
         >
           <RotateCcw size={15} />
           恢复示例数据

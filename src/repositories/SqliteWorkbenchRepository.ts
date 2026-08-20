@@ -415,14 +415,14 @@ export class SqliteWorkbenchRepository implements WorkbenchRepository {
   }
 
   async completeTodo(id: string, completedAt: number) {
-    return this.executor.transaction(async (transaction) => {
-      const record = await readRecord(transaction, id);
-      if (!record) throw new Error('待办不存在');
-      const result = completeTodoRecords(record, completedAt, crypto.randomUUID());
+    const record = await readRecord(this.executor, id);
+    if (!record) throw new Error('待办不存在');
+    const result = completeTodoRecords(record, completedAt, crypto.randomUUID());
+    await this.executor.transaction(async (transaction) => {
       await writeRecord(transaction, result.completed);
       if (result.next) await writeRecord(transaction, result.next);
-      return result;
     });
+    return result;
   }
 
   async updateRecords(ids: string[], patch: BatchRecordPatch): Promise<RecordItem[]> {

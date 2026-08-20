@@ -52,10 +52,26 @@
 .markdown-body img { max-width: 100%; }
 
 .direction-markdown {
-  display: -webkit-box;
+  line-height: 1.65;
+  max-height: 11.2em;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 8;
+  position: relative;
+}
+.direction-markdown p,
+.direction-markdown ul,
+.direction-markdown ol {
+  margin: 0.4em 0;
+}
+/* 折叠处柔和渐隐提示还有更多内容 */
+.direction-markdown::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.4em;
+  background: linear-gradient(to bottom, transparent, var(--surface));
+  pointer-events: none;
 }
 
 .markdown-mode {
@@ -79,6 +95,28 @@
   box-shadow: 0 1px 3px rgba(28, 26, 22, 0.1);
 }
 .markdown-source { min-height: 220px; }
+
+/* 分栏模式：左编辑右预览，编辑时实时同步渲染 */
+.markdown-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+.markdown-split .markdown-source,
+.markdown-split .markdown-preview {
+  min-height: 260px;
+}
+.markdown-split .markdown-source {
+  resize: vertical;
+}
+.markdown-split .markdown-preview {
+  overflow-y: auto;
+  max-height: 520px;
+}
+@media (max-width: 720px) {
+  .markdown-split { grid-template-columns: 1fr; }
+}
 .markdown-preview {
   min-height: 220px;
   border: 1px solid var(--line);

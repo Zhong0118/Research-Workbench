@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Manager, State, WindowEvent,
+    App, AppHandle, Manager, RunEvent, State, WindowEvent,
 };
 use tauri_plugin_shell::ShellExt;
 
@@ -23,7 +23,25 @@ impl Default for DesktopState {
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
+        let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+}
+
+const fn should_restore_on_reopen(has_visible_windows: bool) -> bool {
+    !has_visible_windows
+}
+
+pub fn handle_run_event(app: &AppHandle, event: RunEvent) {
+    #[cfg(target_os = "macos")]
+    if let RunEvent::Reopen {
+        has_visible_windows,
+        ..
+    } = event
+    {
+        if should_restore_on_reopen(has_visible_windows) {
+            show_main_window(app);
+        }
     }
 }
 
@@ -39,13 +57,22 @@ pub fn setup_tray(app: &mut App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => show_main_window(app),
             "quit" => {
-                app.state::<DesktopState>().is_quitting.store(true, Ordering::Relaxed);
+                app.state::<DesktopState>()
+                    .is_quitting
+                    .store(true, Ordering::Relaxed);
                 app.exit(0);
             }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if matches!(event, TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. }) {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
                 show_main_window(tray.app_handle());
             }
         });
@@ -87,7 +114,10 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
             .state::<DesktopState>()
             .close_to_tray
             .load(Ordering::Relaxed)
-            && !window.state::<DesktopState>().is_quitting.load(Ordering::Relaxed)
+            && !window
+                .state::<DesktopState>()
+                .is_quitting
+                .load(Ordering::Relaxed)
         {
             api.prevent_close();
             let _ = window.hide();
@@ -104,5 +134,11 @@ mod tests {
         let state = DesktopState::default();
         assert!(state.close_to_tray.load(Ordering::Relaxed));
         assert!(!state.is_quitting.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn dock_reopen_restores_only_when_every_window_is_hidden() {
+        assert!(should_restore_on_reopen(false));
+        assert!(!should_restore_on_reopen(true));
     }
 }

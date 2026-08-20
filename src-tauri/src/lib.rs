@@ -3,7 +3,7 @@ mod desktop;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(desktop::DesktopState::default())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
@@ -23,6 +23,8 @@ pub fn run() {
             desktop::open_data_directory
         ])
         .on_window_event(desktop::handle_window_event)
-        .run(tauri::generate_context!())
-        .expect("failed to run Research Workbench");
+        .build(tauri::generate_context!())
+        .expect("failed to build Research Workbench");
+
+    app.run(desktop::handle_run_event);
 }

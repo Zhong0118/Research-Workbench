@@ -2,7 +2,27 @@ import { useMemo, useState, Fragment, lazy, Suspense } from 'react';
 import type { DragEvent } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import clsx from 'clsx';
-import { Plus, GripVertical, Pencil, Copy, Archive, Trash2, Star, ListChecks } from 'lucide-react';
+import {
+  Plus,
+  GripVertical,
+  Pencil,
+  Copy,
+  Archive,
+  Trash2,
+  Star,
+  ListChecks,
+  Key,
+  Target,
+  Building2,
+  Users,
+  Hash,
+  User,
+  CalendarClock,
+  Wallet,
+  Boxes,
+  MapPin,
+  Tag,
+} from 'lucide-react';
 import { useStore } from '../stores';
 import { filterRecords } from '../store/selectors';
 import { STATUS_LABEL } from '../types';
@@ -12,6 +32,7 @@ import type { RowDnd } from './RecordRow';
 import { Empty } from './Dashboard';
 import { InlineNotes } from './MusicNotes';
 import { requestEditor } from '../editorBus';
+import { confirmDialog } from '../confirmBus';
 import { orderKey } from '../planUtils';
 import { formatDate } from '../utils';
 import { MarkdownPreview } from '../features/markdown/MarkdownPreview';
@@ -33,6 +54,21 @@ const STATUS_FILTERS: Array<{ key: string; label: string }> = [
   { key: 'archived', label: '已归档' },
 ];
 
+/** 根据字段名返回一个贴切的图标（用于方向卡片自定义字段标签） */
+function fieldIcon(name: string) {
+  if (/关键词|keyword/i.test(name)) return Key;
+  if (/目标|阶段|状态|当前/.test(name)) return Target;
+  if (/甲方|合作方|客户|牵头|单位/.test(name)) return Building2;
+  if (/角色|分工|负责/.test(name)) return User;
+  if (/编号|ID|id/.test(name)) return Hash;
+  if (/执行期|交付|时间|节点|期限/.test(name)) return CalendarClock;
+  if (/经费|到账|预算|合同额|账户/.test(name)) return Wallet;
+  if (/范围|包含|内容|核心|模块/.test(name)) return Boxes;
+  if (/位置|存储|路径|地址/.test(name)) return MapPin;
+  if (/成员|团队|人员/.test(name)) return Users;
+  return Tag;
+}
+
 /** 科研方向专用宽卡片：主次优先级 + 多行正文 + 竖排自定义字段 */
 function DirectionCard({ record, dnd, selection }: { record: RecordItem; dnd?: RowDnd; selection?: { checked: boolean; onToggle: () => void } }) {
   const { workspaces, archiveRecord, duplicateRecord, deleteRecord, updateRecord } = useStore(
@@ -47,10 +83,13 @@ function DirectionCard({ record, dnd, selection }: { record: RecordItem; dnd?: R
   const ws = workspaces.find((w) => w.id === record.workspaceId);
   const isMain = record.priority === 'high';
 
-  const onDelete = () => {
-    if (window.confirm(`确定删除「${record.title}」吗？此操作不可恢复。`)) {
-      deleteRecord(record.id);
-    }
+  const onDelete = async () => {
+    const confirmed = await confirmDialog({
+      message: `确定删除「${record.title}」吗？此操作不可恢复。`,
+      confirmLabel: '删除',
+      danger: true,
+    });
+    if (confirmed) deleteRecord(record.id);
   };
 
   return (
@@ -109,12 +148,18 @@ function DirectionCard({ record, dnd, selection }: { record: RecordItem; dnd?: R
       )}
       {record.fields.length > 0 && (
         <div className="rc-fields">
-          {record.fields.map((f) => (
-            <div className="rc-field" key={f.id}>
-              <b>{f.name}</b>
-              <span>{f.value}</span>
-            </div>
-          ))}
+          {record.fields.map((f) => {
+            const Icon = fieldIcon(f.name);
+            return (
+              <div className="rc-field" key={f.id}>
+                <b>
+                  <Icon size={13} className="rc-field-icon" />
+                  {f.name}
+                </b>
+                <span>{f.value}</span>
+              </div>
+            );
+          })}
         </div>
       )}
       <div className="rc-foot">
@@ -364,7 +409,12 @@ export function RecordsView({ typeId }: { typeId: string }) {
             }}
             onDelete={async () => {
               const count = selection.selected.size;
-              if (!window.confirm(`确定删除已选择的 ${count} 条记录吗？此操作不可恢复。`)) return;
+              const confirmed = await confirmDialog({
+                message: `确定删除已选择的 ${count} 条记录吗？此操作不可恢复。`,
+                confirmLabel: '删除',
+                danger: true,
+              });
+              if (!confirmed) return;
               await deleteRecords([...selection.selected]);
               selection.clear();
             }}

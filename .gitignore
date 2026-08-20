@@ -1,6 +1,9 @@
 node_modules/
 dist/
 release/
+.cargo-home/
+.pnpm-store/
+src-tauri/target/
 shots/
 playwright-report/
 test-results/
@@ -31,5 +34,3 @@ Thumbs.db
 .DS_Store
 .vscode/
 .idea/
-.pnpm-store/
-src-tauri/target/

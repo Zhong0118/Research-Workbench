@@ -6,8 +6,9 @@ import type { RecordItem } from '../types';
 import { STATUS_LABEL, SUB_LABEL } from '../types';
 import { useStore } from '../stores';
 import { requestEditor } from '../editorBus';
+import { confirmDialog } from '../confirmBus';
 import { formatDate } from '../utils';
-import { markdownSummary } from '../features/markdown/plainText';
+import { markdownToPlainLines } from '../features/markdown/plainText';
 import { LiteratureMeta } from '../features/literature/LiteratureMeta';
 import { desktopPlatform } from '../platform';
 
@@ -62,10 +63,13 @@ export function RecordRow({
   const type = types.find((t) => t.id === record.typeId);
   const ws = workspaces.find((w) => w.id === record.workspaceId);
 
-  const onDelete = () => {
-    if (window.confirm(`确定删除「${record.title}」吗？此操作不可恢复。`)) {
-      deleteRecord(record.id);
-    }
+  const onDelete = async () => {
+    const confirmed = await confirmDialog({
+      message: `确定删除「${record.title}」吗？此操作不可恢复。`,
+      confirmLabel: '删除',
+      danger: true,
+    });
+    if (confirmed) deleteRecord(record.id);
   };
 
   return (
@@ -104,7 +108,11 @@ export function RecordRow({
             onOpenExternal={(url) => desktopPlatform.openExternal(url)}
           />
         )}
-        {record.content && <div className="record-snippet">{markdownSummary(record.content)}</div>}
+        {record.content && (
+          <div className="record-snippet" title={record.content}>
+            {markdownToPlainLines(record.content)}
+          </div>
+        )}
         <div className="record-meta">
           {record.archived ? <span className="pill pill-archived">已归档</span> : <StatusPill status={record.status} />}
           {type && (
@@ -114,7 +122,7 @@ export function RecordRow({
             </span>
           )}
           {ws && <span>· {ws.name}</span>}
-          {record.fields.slice(0, 2).map((f) => (
+          {record.fields.map((f) => (
             <span key={f.id} className="field-chip">
               <b>{f.name}</b>
               {f.value}

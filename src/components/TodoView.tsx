@@ -7,6 +7,7 @@ import type { RecordItem } from '../types';
 import { InlineNotes } from './MusicNotes';
 import { Empty } from './Dashboard';
 import { requestEditor } from '../editorBus';
+import { confirmDialog } from '../confirmBus';
 import { daysFromToday, todayStr } from '../utils';
 import clsx from 'clsx';
 import { useRecordSelection } from '../features/selection/useRecordSelection';
@@ -93,7 +94,15 @@ export function TodoItem({ record, selection }: { record: RecordItem; selection?
         <button
           className="icon-btn danger"
           title="删除"
-          onClick={() => window.confirm(`确定删除「${record.title}」吗？`) && deleteRecord(record.id)}
+          onClick={() => {
+            void confirmDialog({
+              message: `确定删除「${record.title}」吗？`,
+              confirmLabel: '删除',
+              danger: true,
+            }).then((confirmed) => {
+              if (confirmed) void deleteRecord(record.id);
+            });
+          }}
         >
           <Trash2 size={15} />
         </button>
@@ -196,10 +205,13 @@ export function TodoView({ typeId }: { typeId: string }) {
     (r) => r.typeId === typeId && r.done && !r.archived,
   ).length;
 
-  const clearAll = () => {
-    if (window.confirm(`确定删除全部 ${doneTotal} 条已完成待办吗？此操作不可恢复。`)) {
-      clearDone(typeId);
-    }
+  const clearAll = async () => {
+    const confirmed = await confirmDialog({
+      message: `确定删除全部 ${doneTotal} 条已完成待办吗？此操作不可恢复。`,
+      confirmLabel: '清空',
+      danger: true,
+    });
+    if (confirmed) clearDone(typeId);
   };
 
   return (
@@ -274,7 +286,12 @@ export function TodoView({ typeId }: { typeId: string }) {
             onMove={async (workspaceId) => { await updateRecords([...selection.selected], { workspaceId }); selection.clear(); }}
             onDelete={async () => {
               const count = selection.selected.size;
-              if (!window.confirm(`确定删除已选择的 ${count} 条待办吗？此操作不可恢复。`)) return;
+              const confirmed = await confirmDialog({
+                message: `确定删除已选择的 ${count} 条待办吗？此操作不可恢复。`,
+                confirmLabel: '删除',
+                danger: true,
+              });
+              if (!confirmed) return;
               await deleteRecords([...selection.selected]);
               selection.clear();
             }}

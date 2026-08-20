@@ -6,6 +6,7 @@ import { Modal } from './Modal';
 import type { CustomField, LiteratureDetails, Priority, RecurrenceRule, Status } from '../types';
 import { PRIORITY_LABEL, STATUS_LABEL } from '../types';
 import type { EditorRequest } from '../editorBus';
+import { confirmDialog } from '../confirmBus';
 import { todayStr } from '../utils';
 import { MarkdownEditor } from '../features/markdown/MarkdownEditor';
 import { desktopPlatform } from '../platform';
@@ -210,7 +211,12 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
 
   const onDelete = async () => {
     if (!existing) return;
-    if (window.confirm(`确定删除「${existing.title}」吗？此操作不可恢复。`)) {
+    const confirmed = await confirmDialog({
+      message: `确定删除「${existing.title}」吗？此操作不可恢复。`,
+      confirmLabel: '删除',
+      danger: true,
+    });
+    if (confirmed) {
       await deleteRecord(existing.id);
       await draft.discard();
       onClose();
