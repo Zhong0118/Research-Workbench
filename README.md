@@ -1,5 +1,9 @@
 # Research Workbench · 科研工作台
 
+> 这是 [Zhong0118](https://github.com/Zhong0118) 对 [Layman-art/Research-Workbench](https://github.com/Layman-art/Research-Workbench) 的 **macOS 适配 fork**：将原项目的 Electron/Windows 实现迁移至 Tauri 2，面向 Apple Silicon 构建原生 macOS 应用，并完善了科研方向、项目、待办、日程、文献等研究工作流。
+>
+> 预构建安装包见 [Releases](https://github.com/Zhong0118/Research-Workbench/releases/latest)，可直接下载 `.dmg` 安装。
+
 面向个人研究生与科研人员的本地优先 macOS 工作台，用一处界面管理科研项目、研究方向、待办、日程、文献笔记与实验记录。
 
 ## 主要能力
@@ -19,9 +23,11 @@
 
 ## macOS 安装
 
-完整说明见 [macOS 安装、升级与数据说明](./docs/macos-installation.md)。
+**直接安装（推荐）**：前往 [Releases](https://github.com/Zhong0118/Research-Workbench/releases/latest) 下载最新 `.dmg`，双击打开后把 `Research Workbench.app` 拖入「应用程序」即可。
 
-个人本地构建：
+完整安装、升级与数据说明见 [macOS 安装、升级与数据说明](./docs/macos-installation.md)。
+
+从源码本地构建：
 
 ```bash
 pnpm install
