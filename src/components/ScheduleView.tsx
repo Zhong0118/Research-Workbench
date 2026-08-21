@@ -15,6 +15,7 @@ import { useStore } from '../stores';
 import { filterRecords } from '../store/selectors';
 import type { RecordItem } from '../types';
 import { InlineNotes } from './MusicNotes';
+import { Modal } from './Modal';
 import { requestEditor } from '../editorBus';
 import { confirmDialog } from '../confirmBus';
 import { planColor, planTimeText, sortPlans } from '../planUtils';
@@ -148,6 +149,7 @@ export function ScheduleView({ typeId, embedded }: { typeId: string; embedded?: 
   const [mode, setMode] = useState<ScheduleMode>('week-grid');
   const [range, setRange] = useState<ScheduleRange>('recent');
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set([todayStr().slice(0, 7)]));
+  const [dayDrawer, setDayDrawer] = useState<string | null>(null);
   const type = types.find((t) => t.id === typeId);
   const all = useMemo(
     () =>
@@ -185,7 +187,7 @@ export function ScheduleView({ typeId, embedded }: { typeId: string; embedded?: 
     return map;
   }, [all]);
 
-  // 月历格子：以周一为列起点，铺满当月所在周数（5 或 6 行）
+  // 月历格子：周一为列起点，前后补邻月浅色日期
   const monthCells = useMemo(() => {
     const anchor = localDate(anchorDate);
     const year = anchor.getFullYear();
@@ -193,11 +195,12 @@ export function ScheduleView({ typeId, embedded }: { typeId: string; embedded?: 
     const first = new Date(year, month, 1);
     const offset = (first.getDay() + 6) % 7;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const cells: Array<string | null> = [];
-    for (let i = 0; i < offset; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) cells.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
     const total = Math.ceil((offset + daysInMonth) / 7) * 7;
-    while (cells.length < total) cells.push(null);
+    const cells: Array<{ date: string; inMonth: boolean }> = [];
+    for (let i = 0; i < total; i++) {
+      const d = new Date(year, month, 1 - offset + i);
+      cells.push({ date: formatDate(d.getTime()), inMonth: d.getMonth() === month });
+    }
     return cells;
   }, [anchorDate]);
 
@@ -259,7 +262,7 @@ export function ScheduleView({ typeId, embedded }: { typeId: string; embedded?: 
           <h1 className="page-title">
             {type.name} <InlineNotes text={type.note} />
           </h1>
-          <p className="page-desc">安排一周，也随时回看和整理全部日程。</p>
+          <p className="page-desc">用周历和月历安排时间，议程默认聚焦近期。</p>
         </div>
         <button className="btn btn-primary" onClick={() => requestEditor({ typeId, planDate: todayStr() })}>
           <Plus size={15} /> 新建日程
@@ -375,16 +378,16 @@ export function ScheduleView({ typeId, embedded }: { typeId: string; embedded?: 
               {WEEK_LABELS.map((label) => (
                 <div key={label} className="month-weekday">{label}</div>
               ))}
-              {monthCells.map((date, index) => {
-                if (!date) return <div key={'empty-' + index} className="month-cell month-cell-empty" />;
-                const items = byDate.get(date) ?? [];
-                const isToday = date === today;
+              {monthCells.map((cell) => {
+                const items = byDate.get(cell.date) ?? [];
+                const isToday = cell.date === today;
+                const openDay = () => setDayDrawer(cell.date);
                 return (
-                  <div key={date} className={clsx('month-cell', isToday && 'today')} role="button" tabIndex={0}
-                    onClick={() => { setAnchorDate(date); setMode('week-grid'); }}
-                    onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setAnchorDate(date); setMode('week-grid'); } }}>
-                    <span className={clsx('month-cell-date', isToday && 'on')}>{Number(date.slice(8))}</span>
-                    <div className="month-cell-events">
+                  <div key={cell.date} className={clsx('month-cell', isToday && 'today', !cell.inMonth && 'outside')} role="button" tabIndex={0}
+                    onClick={openDay}
+                    onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDay(); } }}>
+                    <span className={clsx('month-cell-date', isToday && 'on')}>{Number(cell.date.slice(8))}</span>
+                    <div className="month-cell-events" onClick={(event) => event.stopPropagation()}>
                       {items.slice(0, 3).map((record) => <PlanChip key={record.id} record={record} />)}
                     </div>
                     {items.length > 3 && <span className="month-cell-more">+{items.length - 3} 更多</span>}
@@ -515,6 +518,27 @@ export function ScheduleView({ typeId, embedded }: { typeId: string; embedded?: 
           )}
         </div>
       </section>
+
+      {dayDrawer && (
+        <Modal
+          title={agendaDayLabel(dayDrawer)}
+          onClose={() => setDayDrawer(null)}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => { setAnchorDate(dayDrawer); setMode('week-grid'); setDayDrawer(null); }}>在周网格中打开</button>
+              <button className="btn btn-primary" onClick={() => { requestEditor({ typeId, planDate: dayDrawer }); setDayDrawer(null); }}>安排</button>
+            </>
+          }
+        >
+          <div className="day-drawer-list">
+            {(byDate.get(dayDrawer) ?? []).length === 0 ? (
+              <p className="week-list-empty">这一天还没有安排。</p>
+            ) : (
+              (byDate.get(dayDrawer) ?? []).map((record) => <PlanChip key={record.id} record={record} />)
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -8,19 +8,23 @@ import { InlineNotes } from './MusicNotes';
 import { Empty } from './Dashboard';
 import { requestEditor } from '../editorBus';
 import { confirmDialog } from '../confirmBus';
-import { daysFromToday, todayStr } from '../utils';
+import { daysFromToday, formatDate, todayStr } from '../utils';
+import { markdownSummary } from '../features/markdown/plainText';
 import clsx from 'clsx';
 import { useRecordSelection } from '../features/selection/useRecordSelection';
 import { BulkActionBar } from '../features/selection/BulkActionBar';
 
-type Tab = 'today' | 'starred' | 'all' | 'done';
+type Tab = 'today' | 'plan' | 'archive';
 
 const TABS: Array<{ key: Tab; label: string }> = [
-  { key: 'today', label: '我的一天' },
-  { key: 'starred', label: '重要' },
-  { key: 'all', label: '全部' },
-  { key: 'done', label: '已完成' },
+  { key: 'today', label: '今天' },
+  { key: 'plan', label: '计划' },
+  { key: 'archive', label: '档案' },
 ];
+
+function daysUntilSunday(): number {
+  return 6 - ((new Date().getDay() + 6) % 7);
+}
 
 function DueBadge({ dueDate }: { dueDate: string }) {
   const diff = daysFromToday(dueDate);
@@ -33,15 +37,31 @@ function DueBadge({ dueDate }: { dueDate: string }) {
   );
 }
 
-export function TodoItem({ record, selection }: { record: RecordItem; selection?: { checked: boolean; onToggle: () => void } }) {
-  const { toggleDone, toggleStar, deleteRecord } = useStore(
+function monthHeading(ts: number): string {
+  const d = new Date(ts);
+  return d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月';
+}
+
+export function TodoItem({
+  record,
+  projectTitle,
+  selection,
+}: {
+  record: RecordItem;
+  projectTitle?: string;
+  selection?: { checked: boolean; onToggle: () => void };
+}) {
+  const { toggleDone, toggleStar, deleteRecord, updateRecord } = useStore(
     useShallow((state) => ({
       toggleDone: state.toggleDone,
       toggleStar: state.toggleStar,
       deleteRecord: state.deleteRecord,
+      updateRecord: state.updateRecord,
     })),
   );
   const [isCompleting, setIsCompleting] = useState(false);
+  const summary = record.content ? markdownSummary(record.content, 80) : '';
+  const setDue = (dueDate: string | null) => { void updateRecord(record.id, { dueDate }); };
   const toggleCompletion = () => {
     if (record.done || document.documentElement.dataset.motion === 'reduce') {
       void toggleDone(record.id);
@@ -58,22 +78,18 @@ export function TodoItem({ record, selection }: { record: RecordItem; selection?
       {selection ? (
         <input className="record-select" type="checkbox" aria-label={`选择「${record.title}」`} checked={selection.checked} onChange={selection.onToggle} />
       ) : (
-        <button
-          className="check"
-          onClick={toggleCompletion}
-          disabled={isCompleting}
-          aria-label={record.done ? '标记为未完成' : '标记为完成'}
-        >✓</button>
+        <button className="check" onClick={toggleCompletion} disabled={isCompleting} aria-label={record.done ? '标记为未完成' : '标记为完成'}>✓</button>
       )}
       <div className="record-main">
-        <div
-          className="record-title"
-          onClick={() => requestEditor({ recordId: record.id })}
-          role="button"
-          tabIndex={0}
-        >
+        <div className="record-title" onClick={() => requestEditor({ recordId: record.id })} role="button" tabIndex={0}>
           {record.title}
         </div>
+        {(summary || projectTitle) && (
+          <div className="todo-item-extra">
+            {projectTitle && <span className="todo-project-chip">{projectTitle}</span>}
+            {summary && <span className="todo-item-summary">{summary}</span>}
+          </div>
+        )}
         <div className="record-meta">
           {record.priority !== 'none' && (
             <span className={`priority-flag priority-${record.priority}`}>
@@ -81,29 +97,37 @@ export function TodoItem({ record, selection }: { record: RecordItem; selection?
             </span>
           )}
           {record.dueDate && <DueBadge dueDate={record.dueDate} />}
+          {!record.done && (
+            <span className="todo-due-shortcuts">
+              <button type="button" onClick={() => setDue(todayStr())}>今天</button>
+              <button type="button" onClick={() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 1);
+                setDue(formatDate(d.getTime()));
+              }}>明天</button>
+              <button type="button" onClick={() => {
+                const d = new Date();
+                d.setDate(d.getDate() + daysUntilSunday());
+                setDue(formatDate(d.getTime()));
+              }}>本周</button>
+              {record.dueDate && <button type="button" onClick={() => setDue(null)}>清除日期</button>}
+            </span>
+          )}
         </div>
       </div>
       <div className="record-actions">
-        <button
-          className={clsx('star-btn', record.starred && 'on')}
-          title={record.starred ? '移出重要' : '标为重要'}
-          onClick={() => toggleStar(record.id)}
-        >
+        <button className={clsx('star-btn', record.starred && 'on')} title={record.starred ? '移出重要' : '标为重要'} onClick={() => toggleStar(record.id)}>
           <Star size={15} fill={record.starred ? 'currentColor' : 'none'} />
         </button>
-        <button
-          className="icon-btn danger"
-          title="删除"
-          onClick={() => {
-            void confirmDialog({
-              message: `确定删除「${record.title}」吗？`,
-              confirmLabel: '删除',
-              danger: true,
-            }).then((confirmed) => {
-              if (confirmed) void deleteRecord(record.id);
-            });
-          }}
-        >
+        <button className="icon-btn danger" title="删除" onClick={() => {
+          void confirmDialog({
+            message: `确定删除「${record.title}」吗？`,
+            confirmLabel: '删除',
+            danger: true,
+          }).then((confirmed) => {
+            if (confirmed) void deleteRecord(record.id);
+          });
+        }}>
           <Trash2 size={15} />
         </button>
       </div>
@@ -113,82 +137,69 @@ export function TodoItem({ record, selection }: { record: RecordItem; selection?
 
 export function TodoView({ typeId }: { typeId: string }) {
   const {
-    records,
-    types,
-    workspaceFilter,
-    search,
-    statusFilter,
-    addRecord,
-    clearDone,
-    workspaces,
-    updateRecords,
-    deleteRecords,
+    records, types, workspaceFilter, search, statusFilter, addRecord, clearDone,
+    workspaces, updateRecords, deleteRecords,
   } = useStore(
     useShallow((state) => ({
-      records: state.records,
-      types: state.types,
-      workspaceFilter: state.workspaceFilter,
-      search: state.search,
-      statusFilter: state.statusFilter,
-      addRecord: state.addRecord,
-      clearDone: state.clearDone,
-      workspaces: state.workspaces,
-      updateRecords: state.updateRecords,
-      deleteRecords: state.deleteRecords,
+      records: state.records, types: state.types, workspaceFilter: state.workspaceFilter,
+      search: state.search, statusFilter: state.statusFilter, addRecord: state.addRecord,
+      clearDone: state.clearDone, workspaces: state.workspaces,
+      updateRecords: state.updateRecords, deleteRecords: state.deleteRecords,
     })),
   );
   const [tab, setTab] = useState<Tab>('today');
+  const [starredOnly, setStarredOnly] = useState(false);
   const [quick, setQuick] = useState('');
 
   const all = useMemo(
-    () =>
-      filterRecords({
-        records,
-        typeId,
-        workspaceId: workspaceFilter,
-        status: statusFilter,
-        query: search,
-      }),
+    () => filterRecords({ records, typeId, workspaceId: workspaceFilter, status: statusFilter, query: search }),
     [records, search, statusFilter, typeId, workspaceFilter],
   );
   const type = types.find((t) => t.id === typeId);
+  const projectTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of records) if (r.typeId === 'project') map.set(r.id, r.title);
+    return map;
+  }, [records]);
 
   const today = todayStr();
+  const untilSunday = daysUntilSunday();
   const groups = useMemo<Record<string, RecordItem[]>>(() => {
-    const active = all.filter((r) => !r.done);
-    const done = all.filter((r) => r.done);
+    const scoped = starredOnly ? all.filter((r) => r.starred) : all;
+    const active = scoped.filter((r) => !r.done);
+    const done = scoped.filter((r) => r.done);
+    const dueIn = (r: RecordItem) => (r.dueDate ? daysFromToday(r.dueDate) : null);
     const result: Record<string, RecordItem[]> = {};
     if (tab === 'today') {
-      result['今天'] = active.filter((r) => r.dueDate && daysFromToday(r.dueDate) <= 0);
-      result['未安排日期'] = active.filter((r) => !r.dueDate);
-      result['以后'] = active.filter((r) => r.dueDate && daysFromToday(r.dueDate) > 0);
-    } else if (tab === 'starred') {
-      result['重要'] = active.filter((r) => r.starred);
-    } else if (tab === 'all') {
-      // 按时间维度分组：已过期 → 今天 → 本周 → 更晚 → 无日期 → 已完成
-      const untilSunday = 6 - ((new Date().getDay() + 6) % 7);
-      const dueIn = (r: RecordItem) => (r.dueDate ? daysFromToday(r.dueDate) : null);
       result['已过期'] = active.filter((r) => dueIn(r) !== null && dueIn(r)! < 0);
       result['今天'] = active.filter((r) => dueIn(r) === 0);
       result['本周'] = active.filter((r) => dueIn(r) !== null && dueIn(r)! > 0 && dueIn(r)! <= untilSunday);
+    } else if (tab === 'plan') {
       result['更晚'] = active.filter((r) => dueIn(r) !== null && dueIn(r)! > untilSunday);
-      result['无日期'] = active.filter((r) => dueIn(r) === null);
-      result['已完成'] = done;
     } else {
-      result['已完成'] = done;
+      result['无日期'] = active.filter((r) => dueIn(r) === null);
+      const byMonth = new Map<string, RecordItem[]>();
+      for (const r of done) {
+        const key = monthHeading(r.updatedAt);
+        const list = byMonth.get(key) ?? [];
+        list.push(r);
+        byMonth.set(key, list);
+      }
+      for (const [label, items] of byMonth) result['已完成 · ' + label] = items;
     }
     return result;
-  }, [all, tab]);
+  }, [all, starredOnly, tab, untilSunday]);
 
   const counts: Record<Tab, number> = useMemo(() => {
-    const active = all.filter((r) => !r.done);
+    const scoped = starredOnly ? all.filter((r) => r.starred) : all;
+    const active = scoped.filter((r) => !r.done);
+    const dueIn = (r: RecordItem) => (r.dueDate ? daysFromToday(r.dueDate) : null);
     return {
-      today: active.filter((r) => r.dueDate && daysFromToday(r.dueDate) <= 0).length,
-      starred: active.filter((r) => r.starred).length,
-      all: active.length,
-      done: all.filter((r) => r.done).length,
+      today: active.filter((r) => dueIn(r) !== null && dueIn(r)! <= untilSunday).length,
+      plan: active.filter((r) => dueIn(r) !== null && dueIn(r)! > untilSunday).length,
+      archive: active.filter((r) => dueIn(r) === null).length + scoped.filter((r) => r.done).length,
     };
-  }, [all]);
+  }, [all, starredOnly, untilSunday]);
   const visible = useMemo(() => Object.values(groups).flat(), [groups]);
   const selection = useRecordSelection(visible.map((record) => record.id));
 
@@ -201,17 +212,12 @@ export function TodoView({ typeId }: { typeId: string }) {
       typeId,
       title,
       dueDate: tab === 'today' ? today : null,
-      starred: tab === 'starred',
     });
     setQuick('');
   };
 
   const isEmpty = Object.values(groups).every((g) => g.length === 0);
-
-  const doneTotal = records.filter(
-    (r) => r.typeId === typeId && r.done && !r.archived,
-  ).length;
-
+  const doneTotal = records.filter((r) => r.typeId === typeId && r.done && !r.archived).length;
   const clearAll = async () => {
     const confirmed = await confirmDialog({
       message: `确定删除全部 ${doneTotal} 条已完成待办吗？此操作不可恢复。`,
@@ -225,10 +231,8 @@ export function TodoView({ typeId }: { typeId: string }) {
     <div>
       <div className="page-head" style={{ display: 'flex', alignItems: 'flex-end', gap: 14 }}>
         <div style={{ flex: 1 }}>
-        <h1 className="page-title">
-          {type.name} <InlineNotes text={type.note} />
-        </h1>
-        <p className="page-desc">一件一件来，像节拍器一样稳。</p>
+          <h1 className="page-title">{type.name} <InlineNotes text={type.note} /></h1>
+          <p className="page-desc">打开就是今天该做的事；计划和档案按需再看。</p>
         </div>
         {!selection.selecting && <button className="btn btn-ghost" onClick={selection.enter}><ListChecks size={15} />批量选择</button>}
       </div>
@@ -241,47 +245,43 @@ export function TodoView({ typeId }: { typeId: string }) {
           onKeyDown={(e) => e.key === 'Enter' && submitQuick()}
           placeholder={tab === 'today' ? '添加今天要做的事，回车创建' : '添加待办，回车创建'}
         />
-        <button className="btn btn-primary btn-sm" onClick={submitQuick}>
-          添加
-        </button>
+        <button className="btn btn-primary btn-sm" onClick={submitQuick}>添加</button>
       </div>
 
       <div className="todo-tabs">
         {TABS.map((t) => (
-          <button
-            key={t.key}
-            className={clsx('todo-tab', tab === t.key && 'active')}
-            onClick={() => setTab(t.key)}
-          >
-            {t.label}
-            <span className="count">{counts[t.key]}</span>
+          <button key={t.key} className={clsx('todo-tab', tab === t.key && 'active')} onClick={() => setTab(t.key)}>
+            {t.label}<span className="count">{counts[t.key]}</span>
           </button>
         ))}
+        <button className={clsx('todo-tab', starredOnly && 'active')} onClick={() => setStarredOnly((v) => !v)} aria-pressed={starredOnly}>
+          只看重要
+        </button>
       </div>
 
       {isEmpty ? (
-        <Empty text="这个分组空空如也" />
+        <Empty text={tab === 'today' ? '今天没有待办，轻装上阵' : '这个分组空空如也'} />
       ) : (
-        Object.entries(groups).map(
-          ([label, items]) =>
-            items.length > 0 && (
-              <div key={label}>
-                <div className="todo-group-label">
-                  <span>{label}</span>
-                  {label === '已完成' && (
-                    <button className="clear-done-btn" onClick={clearAll}>
-                      清空已完成
-                    </button>
-                  )}
-                </div>
-                <div className="record-list">
-                  {items.map((r) => (
-                    <TodoItem key={r.id} record={r} selection={selection.selecting ? { checked: selection.selected.has(r.id), onToggle: () => selection.toggle(r.id) } : undefined} />
-                  ))}
-                </div>
-              </div>
-            ),
-        )
+        Object.entries(groups).map(([label, items]) => items.length > 0 && (
+          <div key={label}>
+            <div className="todo-group-label">
+              <span>{label}</span>
+              {label.startsWith('已完成') && (
+                <button className="clear-done-btn" onClick={clearAll}>清空已完成</button>
+              )}
+            </div>
+            <div className="record-list">
+              {items.map((r) => (
+                <TodoItem
+                  key={r.id}
+                  record={r}
+                  projectTitle={r.projectId ? projectTitleById.get(r.projectId) : undefined}
+                  selection={selection.selecting ? { checked: selection.selected.has(r.id), onToggle: () => selection.toggle(r.id) } : undefined}
+                />
+              ))}
+            </div>
+          </div>
+        ))
       )}
       {selection.selecting && (
         <>
@@ -294,7 +294,7 @@ export function TodoView({ typeId }: { typeId: string }) {
             onDelete={async () => {
               const count = selection.selected.size;
               const confirmed = await confirmDialog({
-                message: `确定删除已选择的 ${count} 条待办吗？此操作不可恢复。`,
+                message: `确定删除已选择的 ${count} 条待办吗？`,
                 confirmLabel: '删除',
                 danger: true,
               });
