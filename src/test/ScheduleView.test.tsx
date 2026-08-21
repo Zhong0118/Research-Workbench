@@ -36,11 +36,11 @@ describe('ScheduleView', () => {
 
     expect(screen.getByRole('button', { name: '周网格' })).toHaveAttribute('aria-pressed', 'true');
     expect(container.querySelector('.week-grid')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '日程清单' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '本周' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '未来' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '议程' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '近期' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '历史' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '全部' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '月历' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '周清单' }));
 
@@ -48,6 +48,9 @@ describe('ScheduleView', () => {
     expect(container.querySelector('.week-grid')).not.toBeInTheDocument();
     expect(container.querySelector('.week-list')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /在.*安排日程/ })).toHaveLength(7);
+
+    fireEvent.click(screen.getByRole('button', { name: '月历' }));
+    expect(container.querySelector('.month-grid')).toBeInTheDocument();
   });
 
   it('filters the full schedule list and exposes edit and delete actions', async () => {
@@ -69,8 +72,11 @@ describe('ScheduleView', () => {
     const { container } = render(<ScheduleView typeId={scheduleType.id} />);
     const manager = within(container.querySelector('.schedule-manager-list')!);
 
-    expect(manager.getByText('未来讨论')).toBeInTheDocument();
+    // 默认「近期」：2099 太远、2020 已过去，都不显示
+    expect(manager.queryByText('未来讨论')).not.toBeInTheDocument();
     expect(manager.queryByText('过往讨论')).not.toBeInTheDocument();
+
+    // 「历史」：显示过往讨论
     fireEvent.click(screen.getByRole('button', { name: '历史' }));
     expect(manager.getByText('过往讨论')).toBeInTheDocument();
     expect(manager.queryByText('未来讨论')).not.toBeInTheDocument();

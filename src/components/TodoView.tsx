@@ -165,7 +165,14 @@ export function TodoView({ typeId }: { typeId: string }) {
     } else if (tab === 'starred') {
       result['重要'] = active.filter((r) => r.starred);
     } else if (tab === 'all') {
-      result['未完成'] = active;
+      // 按时间维度分组：已过期 → 今天 → 本周 → 更晚 → 无日期 → 已完成
+      const untilSunday = 6 - ((new Date().getDay() + 6) % 7);
+      const dueIn = (r: RecordItem) => (r.dueDate ? daysFromToday(r.dueDate) : null);
+      result['已过期'] = active.filter((r) => dueIn(r) !== null && dueIn(r)! < 0);
+      result['今天'] = active.filter((r) => dueIn(r) === 0);
+      result['本周'] = active.filter((r) => dueIn(r) !== null && dueIn(r)! > 0 && dueIn(r)! <= untilSunday);
+      result['更晚'] = active.filter((r) => dueIn(r) !== null && dueIn(r)! > untilSunday);
+      result['无日期'] = active.filter((r) => dueIn(r) === null);
       result['已完成'] = done;
     } else {
       result['已完成'] = done;
