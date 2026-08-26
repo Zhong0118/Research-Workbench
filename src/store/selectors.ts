@@ -94,7 +94,7 @@ export function selectProjectNextActions(
   today = localToday(),
 ): RecordItem[] {
   return records
-    .filter((record) => record.projectId === projectId && !record.done && !record.archived)
+    .filter((record) => record.projectId === projectId && record.typeId === 'todo' && !record.done && !record.archived)
     .sort((left, right) => {
       const leftGroup = left.dueDate ? (left.dueDate < today ? 0 : 1) : 2;
       const rightGroup = right.dueDate ? (right.dueDate < today ? 0 : 1) : 2;
@@ -102,4 +102,38 @@ export function selectProjectNextActions(
       if (left.dueDate !== right.dueDate) return (left.dueDate ?? '9999').localeCompare(right.dueDate ?? '9999');
       return PRIORITY_ORDER[left.priority] - PRIORITY_ORDER[right.priority];
     });
+}
+
+function shiftIsoDate(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+export function selectProjectWorkbench(
+  records: RecordItem[],
+  projectId: string,
+  today = localToday(),
+) {
+  const linked = records.filter((record) => record.projectId === projectId && !record.archived);
+  const todos = linked.filter((record) => record.typeId === 'todo');
+  const openTodos = todos.filter((record) => !record.done);
+  const dueIn = (record: RecordItem) => (record.dueDate ? Math.round((new Date(record.dueDate).getTime() - new Date(today).getTime()) / 86400000) : null);
+  const recentEnd = shiftIsoDate(today, 14);
+  const schedules = linked
+    .filter((record) => record.typeId === 'schedule' && record.planDate && record.planDate >= today && record.planDate <= recentEnd)
+    .sort((a, b) => `${a.planDate ?? ''} ${a.planStart ?? ''}`.localeCompare(`${b.planDate ?? ''} ${b.planStart ?? ''}`));
+  const notes = linked
+    .filter((record) => record.typeId !== 'todo' && record.typeId !== 'schedule')
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return {
+    overdue: openTodos.filter((record) => dueIn(record) !== null && dueIn(record)! < 0),
+    today: openTodos.filter((record) => dueIn(record) === 0),
+    thisWeek: openTodos.filter((record) => dueIn(record) !== null && dueIn(record)! > 0 && dueIn(record)! <= 7),
+    later: openTodos.filter((record) => dueIn(record) !== null && dueIn(record)! > 7),
+    undated: openTodos.filter((record) => dueIn(record) === null),
+    schedules,
+    recentNotes: notes.slice(0, 3),
+    moreNotes: Math.max(0, notes.length - 3),
+  };
 }

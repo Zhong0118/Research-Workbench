@@ -5,11 +5,8 @@ export const BUILTIN_TYPES: TypeDef[] = [
   { id: 'project', name: '科研项目', kind: 'project', icon: 'flask', note: '♪', builtin: true },
   { id: 'direction', name: '科研方向', kind: 'direction', icon: 'compass', note: '𝄞', builtin: true },
   { id: 'todo', name: '待办事项', kind: 'todo', icon: 'list-checks', note: '♬', builtin: true },
-  { id: 'note', name: '心得笔记', kind: 'generic', icon: 'notebook', note: '𝅘𝅥', builtin: true },
+  { id: 'note', name: '笔记', kind: 'generic', icon: 'notebook', note: '♩', builtin: true },
   { id: 'literature', name: '文献笔记', kind: 'generic', icon: 'book-open', note: '♭', builtin: true },
-  { id: 'data', name: '数据记录', kind: 'generic', icon: 'database', note: '𝅘𝅥𝅮', builtin: true },
-  { id: 'file', name: '文件资料', kind: 'generic', icon: 'folder', note: '𝄢', builtin: true },
-  { id: 'review', name: '复盘总结', kind: 'generic', icon: 'history', note: '𝅘𝅥𝅯', builtin: true },
   { id: 'schedule', name: '日程安排', kind: 'schedule', icon: 'calendar', note: '𝅝', builtin: true },
 ];
 
@@ -55,6 +52,41 @@ export function mergeProjectTypes(
   return { types: newTypes, records: newRecords };
 }
 
+
+/** 老数据升级：把数据记录 / 文件资料 / 复盘总结合并为「笔记」（幂等）。 */
+export function mergeNoteTypes(
+  types: TypeDef[],
+  records: RecordItem[],
+): { types: TypeDef[]; records: RecordItem[] } {
+  const oldIds = ['data', 'file', 'review'];
+  const kindLabel: Record<string, string> = { data: '实验', file: '文件', review: '复盘' };
+  const hasOld = types.some((t) => oldIds.includes(t.id)) || records.some((r) => oldIds.includes(r.typeId));
+  if (!hasOld) {
+    return {
+      types: types.map((t) => (t.id === 'note' ? { ...t, name: '笔记' } : t)),
+      records,
+    };
+  }
+  const newRecords = records.map((r) => {
+    if (!oldIds.includes(r.typeId)) return r;
+    const label = kindLabel[r.typeId];
+    const hasKind = r.fields.some((f) => f.name === '笔记类型');
+    return {
+      ...r,
+      typeId: 'note',
+      fields: hasKind ? r.fields : [{ id: 'note-kind', name: '笔记类型', value: label }, ...r.fields],
+    };
+  });
+  let newTypes = types.filter((t) => !oldIds.includes(t.id));
+  if (!newTypes.some((t) => t.id === 'note')) {
+    const def = BUILTIN_TYPES.find((b) => b.id === 'note')!;
+    const taken = newTypes.map((t) => t.note);
+    newTypes = [...newTypes, { ...def, note: taken.includes(def.note) ? pickNote(def.id, taken) : def.note }];
+  } else {
+    newTypes = newTypes.map((t) => (t.id === 'note' ? { ...t, name: '笔记' } : t));
+  }
+  return { types: newTypes, records: newRecords };
+}
 export const BUILTIN_WORKSPACES: Workspace[] = [
   { id: 'ws-default', name: '默认工作区', builtin: true },
 ];
@@ -196,7 +228,7 @@ export function buildSampleRecords(): RecordItem[] {
       content: '先大背景（为什么重要）→ 现有方法的缺口 → 本文的核心 idea 一句话 → 贡献列表。\n\n写完每一段自问：这一段是否在回答「so what」。',
     }),
     sampleRecord({
-      typeId: 'data',
+      typeId: 'note',
       title: 'LLaMA-3-8B 长文本吞吐基准（2026-08 批次）',
       fields: [
         { id: 'f1', name: '数据集', value: 'LongBench v2' },
@@ -206,7 +238,7 @@ export function buildSampleRecords(): RecordItem[] {
       ],
     }),
     sampleRecord({
-      typeId: 'file',
+      typeId: 'note',
       title: '基金申请书相关模板与往年范文',
       fields: [
         { id: 'f1', name: '位置', value: 'OneDrive:/基金申请/' },
@@ -240,7 +272,7 @@ export function buildSampleRecords(): RecordItem[] {
       planStart: '20:00',
     }),
     sampleRecord({
-      typeId: 'review',
+      typeId: 'note',
       title: '2026 上半年复盘',
       status: 'done',
       content: '做得好的：论文投稿按计划完成；横向项目首款顺利到账。\n\n不足：实验记录不够及时，有两次结果无法复现；文献阅读断断续续。\n\n下半年改进：\n1. 实验当天必须写入数据记录\n2. 每周五固定 2 小时文献时间\n3. 每月底做一次小复盘',

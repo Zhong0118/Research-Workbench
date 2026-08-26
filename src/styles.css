@@ -1980,6 +1980,12 @@ select {
   color: var(--muted);
   margin-bottom: 6px;
 }
+.form-hint {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--faint);
+  line-height: 1.5;
+}
 
 .form-input,
 .form-textarea,
@@ -2092,6 +2098,51 @@ select {
 .project-actions time { color: var(--faint); font-size: 10.5px; }
 .project-actions-more { color: var(--faint); font-size: 11.5px; }
 .project-actions-empty { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+
+.project-workbench {
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: color-mix(in srgb, var(--surface) 72%, var(--paper));
+  color: var(--muted);
+  padding: 10px 16px 12px 52px;
+  display: grid;
+  gap: 10px;
+}
+.project-workbench section { display: grid; gap: 4px; }
+.project-workbench-label {
+  color: var(--faint);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.project-workbench-group {
+  display: grid;
+  gap: 2px;
+}
+.project-workbench-group > span {
+  font-size: 11px;
+  color: var(--faint);
+}
+.project-workbench button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  padding: 3px 7px;
+  text-align: left;
+}
+.project-workbench button:hover { background: var(--paper-deep); color: var(--accent-deep); }
+.project-workbench time { margin-left: auto; color: var(--faint); font-size: 10.5px; }
+.project-workbench-more { color: var(--faint); font-size: 11.5px; }
+.project-workbench-empty,
+.project-workbench-empty-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+.project-workbench-add { display: inline-flex; gap: 6px; }
 
 .view-mode-toggle {
   display: inline-flex;

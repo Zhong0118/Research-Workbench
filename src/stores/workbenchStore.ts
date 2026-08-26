@@ -8,7 +8,7 @@ import type {
   Workspace,
 } from '../domain/models';
 import type { BatchRecordPatch, WorkbenchRepository } from '../repositories/WorkbenchRepository';
-import { BUILTIN_TYPES, BUILTIN_WORKSPACES, buildSampleRecords } from '../sample';
+import { BUILTIN_TYPES, BUILTIN_WORKSPACES, buildSampleRecords, mergeNoteTypes, mergeProjectTypes, ensureScheduleType } from '../sample';
 import { pickNote } from '../types';
 import { isTypeIcon } from '../icons';
 import { orderKey } from '../planUtils';
@@ -234,8 +234,18 @@ export function createWorkbenchStore(repository: WorkbenchRepository) {
         try {
           await repository.initialize();
           const snapshot = await repository.loadSnapshot();
+          const mergedProjects = mergeProjectTypes(snapshot.types, snapshot.records);
+          const withSchedule = { ...mergedProjects, types: ensureScheduleType(mergedProjects.types) };
+          const mergedNotes = mergeNoteTypes(withSchedule.types, withSchedule.records);
+          const migrated =
+            mergedNotes.types !== snapshot.types || mergedNotes.records !== snapshot.records;
+          if (migrated) {
+            await repository.replaceAll({ ...snapshot, types: mergedNotes.types, records: mergedNotes.records });
+          }
           set({
             ...snapshot,
+            types: mergedNotes.types,
+            records: mergedNotes.records,
             displayName: snapshot.settings.displayName,
             phase: 'ready',
             error: null,

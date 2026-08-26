@@ -37,9 +37,10 @@ import { orderKey } from '../planUtils';
 import { formatDate } from '../utils';
 import { MarkdownPreview } from '../features/markdown/MarkdownPreview';
 import { desktopPlatform } from '../platform';
-import { ProjectNextActions } from '../features/projects/ProjectNextActions';
+import { ProjectWorkbench } from '../features/projects/ProjectWorkbench';
 import { useRecordSelection } from '../features/selection/useRecordSelection';
 import { BulkActionBar } from '../features/selection/BulkActionBar';
+import { NOTE_KINDS, noteKindOf } from '../features/notes/noteKind';
 
 const ProjectBoard = lazy(() =>
   import('../features/projects/ProjectBoard').then((module) => ({ default: module.ProjectBoard })),
@@ -232,16 +233,21 @@ export function RecordsView({ typeId }: { typeId: string }) {
     [allRecords, search, typeId, workspaceFilter],
   );
 
+  const [noteKindFilter, setNoteKindFilter] = useState<string>('all');
+
   // 手动排序（order）优先，未设置时按更新时间倒序兜底；科研方向：主要方向在前
   const sorted = useMemo(() => {
-    const list = [...records].sort((a, b) => orderKey(a) - orderKey(b));
+    const scoped = typeId === 'note' && noteKindFilter !== 'all'
+      ? records.filter((record) => noteKindOf(record.fields) === noteKindFilter)
+      : records;
+    const list = [...scoped].sort((a, b) => orderKey(a) - orderKey(b));
     if (type?.kind === 'direction') {
       return list
         .filter((r) => r.priority === 'high')
         .concat(list.filter((r) => r.priority !== 'high'));
     }
     return list;
-  }, [records, type?.kind]);
+  }, [noteKindFilter, records, type?.kind, typeId]);
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<{ id: string; after: boolean } | null>(null);
@@ -268,6 +274,7 @@ export function RecordsView({ typeId }: { typeId: string }) {
   const isDirection = type.kind === 'direction';
   const isProject = type.kind === 'project';
   const todoTypeId = types.find((candidate) => candidate.kind === 'todo')?.id ?? 'todo';
+  const scheduleTypeId = types.find((candidate) => candidate.kind === 'schedule')?.id ?? 'schedule';
 
   const endDrag = () => {
     setDragId(null);
@@ -336,6 +343,13 @@ export function RecordsView({ typeId }: { typeId: string }) {
             {f.label}
           </button>
         ))}
+        {typeId === 'note' && ['all', ...NOTE_KINDS].map((kind) => (
+          <button
+            key={kind}
+            className={`filter-chip ${noteKindFilter === kind ? 'active' : ''}`}
+            onClick={() => setNoteKindFilter(kind)}
+          >{kind === 'all' ? '全部笔记' : kind}</button>
+        ))}
         {isProject && (
           <div className="view-mode-toggle" aria-label="项目视图">
             <button
@@ -379,7 +393,7 @@ export function RecordsView({ typeId }: { typeId: string }) {
                 {g.items.map((r) => (
                   <div className="project-record-wrap" key={r.id}>
                     <RecordRow record={r} dnd={selection.selecting ? undefined : dndFor(r)} selection={selectionFor(r)} />
-                    <ProjectNextActions records={allRecords} projectId={r.id} todoTypeId={todoTypeId} />
+                    <ProjectWorkbench records={allRecords} projectId={r.id} todoTypeId={todoTypeId} scheduleTypeId={scheduleTypeId} />
                   </div>
                 ))}
               </div>

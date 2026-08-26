@@ -14,6 +14,7 @@ import { useRecordDraft } from '../features/drafts/useRecordDraft';
 import { workbenchRepository } from '../repositories';
 import { RecurrenceFields } from '../features/todos/RecurrenceFields';
 import { LiteratureFields } from '../features/literature/LiteratureFields';
+import { NOTE_KINDS, noteKindOf, withNoteKind, type NoteKind } from '../features/notes/noteKind';
 
 interface EditorDraftData {
   title: string;
@@ -53,7 +54,7 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
   const [status, setStatus] = useState<Status>(existing?.status ?? 'active');
   const [starred, setStarred] = useState(existing?.starred ?? false);
   const [content, setContent] = useState(existing?.content ?? '');
-  const [fields, setFields] = useState<CustomField[]>(existing?.fields ?? []);
+  const [fields, setFields] = useState<CustomField[]>(existing?.fields ?? (request.typeId === 'note' ? withNoteKind([], '随手', uid) : []));
   const [priority, setPriority] = useState<Priority>(existing?.priority ?? 'none');
   const [dueDate, setDueDate] = useState(existing?.dueDate ?? '');
   const [planDate, setPlanDate] = useState(existing?.planDate ?? request.planDate ?? todayStr());
@@ -197,7 +198,7 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
       planEnd: kind === 'schedule' ? planEnd || null : null,
       sub: kind === 'project' ? sub : null,
       recurrence: kind === 'todo' ? recurrence : null,
-      projectId: kind === 'todo' ? projectId || null : null,
+      projectId: kind === 'project' || kind === 'direction' ? null : projectId || null,
       literature: kind === 'literature' ? literature : null,
     };
     if (existing) {
@@ -428,30 +429,46 @@ export function EditorModal({ request, onClose }: { request: EditorRequest; onCl
         )}
       </div>
 
-      {kind === 'todo' && (
-        <div className="todo-relations">
-          <RecurrenceFields value={recurrence} onChange={setRecurrence} />
-          <div>
-            <label className="form-label" htmlFor="todo-project">关联项目</label>
-            <select
-              id="todo-project"
-              className="form-select"
-              value={projectId}
-              onChange={(event) => setProjectId(event.target.value)}
-            >
-              <option value="">不关联项目</option>
-              {availableProjects.map((project) => (
-                <option key={project.id} value={project.id}>{project.title}</option>
-              ))}
-            </select>
-          </div>
+      {kind === 'todo' && <RecurrenceFields value={recurrence} onChange={setRecurrence} />}
+
+      {kind !== 'project' && kind !== 'direction' && (
+        <div>
+          <label className="form-label" htmlFor="record-project">关联项目</label>
+          <select
+            id="record-project"
+            className="form-select"
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+          >
+            <option value="">不关联项目</option>
+            {availableProjects.map((project) => (
+              <option key={project.id} value={project.id}>{project.title}</option>
+            ))}
+          </select>
         </div>
       )}
 
       {kind === 'literature' && <LiteratureFields value={literature} onChange={setLiterature} />}
 
+      {typeId === 'note' && (
+        <div>
+          <label className="form-label" htmlFor="note-kind">笔记类型</label>
+          <select
+            id="note-kind"
+            className="form-select"
+            value={noteKindOf(fields)}
+            onChange={(event) => setFields((current) => withNoteKind(current, event.target.value as NoteKind, uid))}
+          >
+            {NOTE_KINDS.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+          <p className="form-hint">同一套笔记格式；换类型只会补上常用字段，已有内容不会被覆盖。</p>
+        </div>
+      )}
+
       <div>
-        <label className="form-label">正文 / 心得笔记</label>
+        <label className="form-label">正文</label>
         <MarkdownEditor
           value={content}
           onChange={setContent}
